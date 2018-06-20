@@ -1,5 +1,7 @@
 import numpy as np
 import math
+import matplotlib
+matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import cv2
 import time
@@ -118,13 +120,115 @@ def drawStuff(x, y):
     lastY = y
     updateEncodings()
 
-
 #currently just calls the real updateEncodings function
 #implementing threading went...badly
+
+
+######### Code for adding a blob #############
 def updateEncodings():
     global usingThreading
     if not usingThreading:
         updateEncodingsForReal()
+
+def satisfy_check(level,x,y):
+    global img
+    for child in level.children:
+        if not out_contour(x ,y , child.contour):
+            print("Failed in satisfy_check")
+            cv2.circle(img,(x,y),1,(255,0,0),-1)
+            return False
+
+    return True
+
+def out_contour(x, y, contour):
+    global drawRadius
+    ret = cv2.pointPolygonTest(contour, (x, y), True)
+    if ret > -(5*drawRadius):
+        return False
+
+    return True
+
+def in_contour( x, y, contour):
+    ret = cv2.pointPolygonTest(contour, (x, y), True)
+    if ret < (5*drawRadius):
+        print("Failed in in_contour")
+        return False
+
+    return True
+
+def add_blob(level):
+    global img,drawRadius,drawColour
+    extreme_top = tuple(level.contour[level.contour[:, :, 0].argmin()][0])
+    extreme_bottom = tuple(level.contour[level.contour[:, :, 0].argmax()][0])
+    extreme_left = tuple(level.contour[level.contour[:, :, 1].argmin()][0])
+    extreme_right = tuple(level.contour[level.contour[:, :, 1].argmax()][0])
+    print(extreme_top,extreme_bottom,extreme_left,extreme_right)
+    cv2.circle(img,extreme_left,1,(0,0,255),-1)
+    cv2.circle(img,extreme_right,1,(0,0,255),-1)
+    cv2.circle(img,extreme_top,1,(0,0,255),-1)
+    cv2.circle(img,extreme_bottom,1,(0,0,255),-1)
+    range_in_x = (extreme_top[0],extreme_bottom[0])
+    range_in_y = (extreme_left[1],extreme_right[1])
+
+    while True:
+        sampled_x = int(np.random.uniform(range_in_x[0],range_in_x[1],1))
+        sampled_y = int(np.random.uniform(range_in_y[0],range_in_y[1],1))
+
+        if satisfy_check(level,sampled_x,sampled_y) and in_contour(sampled_x,sampled_y,level.contour):
+            print("Drawing on %d %d" % (sampled_x,sampled_y))
+            cv2.circle(img, (sampled_x, sampled_y), drawRadius, drawColour, -1)
+            updateEncodings()
+            break
+
+        print(sampled_x,sampled_y,"No")
+
+def increase_blob(source='button'):
+    global undoStack, undoIndex, img, globalLevels
+    print(globalLevels)
+    for level in globalLevels[1]:
+        add_blob(level)
+    logEvent(source + 'increase')
+
+#########################################
+
+
+####### Code for Deleting a blob #######
+
+def delete_blob(blob):
+    global img
+    cv2.fillPoly(img, pts =[blob.contour], color=(255,255,255))
+    updateEncodings()
+
+def decrease_blob(source='button'):
+    global undoStack, undoIndex, img, globalLevels
+    print(globalLevels)
+    for level in globalLevels[1]:
+        if len(level.children) > 2:
+            blob_with_min_area = min(level.children,key = lambda x: x.area)
+            delete_blob(blob_with_min_area)
+    logEvent(source + 'decreases')
+
+##########################################
+
+
+
+####### Code for Reducing a part #######
+
+def cut_part(part):
+    global img,drawRadius
+    point = np.random.choice(range(len(part.contour)),1)
+    print part.contour[point][0][0]
+    x, y = part.contour[point][0][0]
+    cv2.circle(img, (x,y), drawRadius , (255,255,255), -1) # @todo : store the size of radius at each point
+    updateEncodings()
+
+def reduce_part(source='button'):
+    global undoStack, undoIndex, img, globalLevels
+    for level in globalLevels[1]:
+        cut_part(level)
+    logEvent(source + 'reduce_part')
+
+##########################################
 
 
 #figures out the current encoding of the image and updates all overlays
@@ -1859,6 +1963,16 @@ if __name__ == "__main__":
     clearBtn = Button(tkRoot, text="Clear", font=buttonTextFont, command=clearCanvas)
     clearBtn.place(x=1405, y=240, width=50, height=50)
 
+    ########## Rahul's code ###############
+    incBtn = Button(tkRoot, text="Inc", font=buttonTextFont, command=increase_blob)
+    incBtn.place(x=1285, y=340, width=50, height=50)
+
+    decBtn = Button(tkRoot, text="Dec", font=buttonTextFont, command=decrease_blob)
+    decBtn.place(x=1345, y=340, width=50, height=50)
+
+    redprtBtn = Button(tkRoot, text="RedPart", font=buttonTextFont, command=reduce_part)
+    redprtBtn.place(x=1285, y=440, width=50, height=50)
+    ######################################
     visualTargetPanel = None
     resetVTGuiElements()
     updateVisualTargetPanel()
