@@ -31,7 +31,7 @@ CANVAS_HEIGHT = 720
 INTERP_DIST = 3
 NUM_UNDO_STATES = 11 #number of undos will be one less than this
 BLACK = (0,0,0)
-GREY = (100,100,100) #unused in current version
+GREY = (100,100,100) #unused in parent version
 WHITE = (255,255,255)
 
 #global variables
@@ -219,7 +219,30 @@ def cut_part(part):
     point = np.random.choice(range(len(part.contour)),1)
     print part.contour[point][0][0]
     x, y = part.contour[point][0][0]
-    cv2.circle(img, (x,y), drawRadius , (255,255,255), -1) # @todo : store the size of radius at each point
+    temp_part = part.contour
+    temp_part = np.delete(temp_part,point,0)
+    closest_point = min(temp_part,key = lambda v: (v[0][0] - x)**2 + (v[0][1] - y)**2)
+    print(closest_point)
+    c_x ,c_y = closest_point[0]
+    dv_x = x - c_x
+    dv_y = y - c_y
+    mag = np.sqrt(dv_x**2 + dv_y**2)
+    dv_x = dv_x/mag
+    dv_y = dv_y/mag
+    temp = dv_x 
+    dv_x = -dv_y 
+    dv_y = temp
+    length = 1
+    while True:
+        new_x = int(x + dv_x * length)
+        new_y = int(y + dv_y * length)
+        print(new_x,new_y)
+        b,g,r = img[new_x,new_y,:]
+        if b == 255 and g == 255 and r == 255:
+            break
+        length = length + 2
+    cv2.line(img,(x,y),(new_x,new_y),(255,0,0),4)
+    # cv2.circle(img, (x,y), drawRadius , (255,255,255), -1) # @todo : store the size of radius at each point
     updateEncodings()
 
 def reduce_part(source='button'):
