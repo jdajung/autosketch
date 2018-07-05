@@ -22,6 +22,7 @@ from conversions import *
 from detector import *
 from drawing import *
 from random import randint
+from part_division import *
 
 #global constants
 BASE_PATH = os.getcwd()
@@ -150,18 +151,19 @@ def out_contour(x, y, contour):
 
 def in_contour( x, y, contour):
     ret = cv2.pointPolygonTest(contour, (x, y), True)
-    if ret < (5*drawRadius):
+    radius_multiplier = 4
+    if ret < (radius_multiplier*drawRadius):
         print("Failed in in_contour")
         return False
 
     return True
 
-def add_blob(level):
+def add_blob(part):
     global img,drawRadius,drawColour
-    extreme_top = tuple(level.contour[level.contour[:, :, 0].argmin()][0])
-    extreme_bottom = tuple(level.contour[level.contour[:, :, 0].argmax()][0])
-    extreme_left = tuple(level.contour[level.contour[:, :, 1].argmin()][0])
-    extreme_right = tuple(level.contour[level.contour[:, :, 1].argmax()][0])
+    extreme_top = tuple(part.contour[part.contour[:, :, 0].argmin()][0])
+    extreme_bottom = tuple(part.contour[part.contour[:, :, 0].argmax()][0])
+    extreme_left = tuple(part.contour[part.contour[:, :, 1].argmin()][0])
+    extreme_right = tuple(part.contour[part.contour[:, :, 1].argmax()][0])
     print(extreme_top,extreme_bottom,extreme_left,extreme_right)
     cv2.circle(img,extreme_left,1,(0,0,255),-1)
     cv2.circle(img,extreme_right,1,(0,0,255),-1)
@@ -169,24 +171,29 @@ def add_blob(level):
     cv2.circle(img,extreme_bottom,1,(0,0,255),-1)
     range_in_x = (extreme_top[0],extreme_bottom[0])
     range_in_y = (extreme_left[1],extreme_right[1])
+    count = 0
+    max_count = 100
 
-    while True:
+    while count < max_count:
         sampled_x = int(np.random.uniform(range_in_x[0],range_in_x[1],1))
         sampled_y = int(np.random.uniform(range_in_y[0],range_in_y[1],1))
 
-        if satisfy_check(level,sampled_x,sampled_y) and in_contour(sampled_x,sampled_y,level.contour):
+        if satisfy_check(part,sampled_x,sampled_y) and in_contour(sampled_x,sampled_y,part.contour):
             print("Drawing on %d %d" % (sampled_x,sampled_y))
             cv2.circle(img, (sampled_x, sampled_y), drawRadius, drawColour, -1)
-            updateEncodings()
+            # updateEncodings()
             break
-
+        count += 1
         print(sampled_x,sampled_y,"No")
+    if count >= max_count:
+        print "ERROR: No valid location found for blob placement"
 
 def increase_blob(source='button'):
     global undoStack, undoIndex, img, globalLevels
     print(globalLevels)
-    for level in globalLevels[1]:
-        add_blob(level)
+    for part in globalLevels[1]:
+        add_blob(part)
+    updateEncodings()
     logEvent(source + 'increase')
 
 #########################################
@@ -197,7 +204,15 @@ def increase_blob(source='button'):
 def delete_blob(blob):
     global img
     cv2.fillPoly(img, pts =[blob.contour], color=(255,255,255))
-    updateEncodings()
+    # updateEncodings()
+
+def delete_first_blob(part):
+    if not part.children:
+        print "ERROR: Cannot delete blob because the given part contains no blobs"
+    else:
+        blob = part.children[0]
+        delete_blob(blob)
+        part.children = part.children[1:]
 
 def decrease_blob(source='button'):
     global undoStack, undoIndex, img, globalLevels
@@ -206,10 +221,52 @@ def decrease_blob(source='button'):
         if len(level.children) > 2:
             blob_with_min_area = min(level.children,key = lambda x: x.area)
             delete_blob(blob_with_min_area)
+    updateEncodings()
     logEvent(source + 'decreases')
 
 ##########################################
 
+def set_target_dividers(posn_list):
+    global targetDividers
+    resetTargetDividers()
+    for posn in posn_list:
+        targetDividers = targetDividers[:posn] + '|' + targetDividers[posn+1:]
+
+def auto_fix_blobs():
+    global mainRoot, targetBinString, targetDividers
+
+    if mainRoot is None or not mainRoot.children:
+        print "Cannot fix blobs; No parts found"
+        return
+
+    img_part_vals = []
+    sorted_parts = sortParts(mainRoot, 'area')
+    for part in sorted_parts:
+        img_part_vals.append(part.encoding)
+
+    fixed_target = find_divisions(img_part_vals,targetBinString,abs_diff_cost)
+    target_part_vals = fixed_target[1]
+    set_target_dividers(fixed_target[2])
+
+    for i in range(len(sorted_parts)):
+        sorted_parts[i].children = sortBlobs(sorted_parts[i], 'area')
+        counter = 0
+        max_count = 100
+        while img_part_vals[i] != target_part_vals[i] and counter < max_count:
+            if img_part_vals[i] < target_part_vals[i]:
+                add_blob(sorted_parts[i])
+                img_part_vals[i] += 1
+            else:
+                delete_first_blob(sorted_parts[i])
+                img_part_vals[i] -= 1
+        if counter >= max_count:
+            print "ERROR: Fix blobs failed with too many attempts"
+    updateEncodings()
+
+def auto_fix_blobs_btn(source='button'):
+    auto_fix_blobs()
+    updateEncodings()
+    logEvent(source + 'autoFixBlobs')
 
 
 ####### Code for Reducing a part #######
@@ -1995,6 +2052,10 @@ if __name__ == "__main__":
 
     redprtBtn = Button(tkRoot, text="RedPart", font=buttonTextFont, command=reduce_part)
     redprtBtn.place(x=1285, y=440, width=50, height=50)
+
+    #and also some not Rahul's code
+    fixBlobBtn = Button(tkRoot, text="Fix", font=buttonTextFont, command=auto_fix_blobs_btn)
+    fixBlobBtn.place(x=1285, y=540, width=50, height=50)
     ######################################
     visualTargetPanel = None
     resetVTGuiElements()
