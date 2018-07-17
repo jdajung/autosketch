@@ -13,6 +13,7 @@ import tkFileDialog
 import tkFont
 import threading
 import mutex
+import itertools
 
 from Tkinter import *
 from PIL import Image
@@ -36,7 +37,7 @@ GREY = (100,100,100) #unused in parent version
 WHITE = (255,255,255)
 
 #global variables
-targetBinString = '100111'#'1110010110110011001110101101101111' #Put your target encoding here!
+targetBinString = '110011'#'1110010110110011001110101101101111' #Put your target encoding here!
 
 #the rest of these variables should be left alone
 
@@ -225,6 +226,67 @@ def decrease_blob(source='button'):
     logEvent(source + 'decreases')
 
 ##########################################
+
+
+##### Join a Blob to the nearest blob #######
+
+def closest_pair_of_points_between_blobs(blob1,blob2):
+    points1 = blob1.approx
+    points2 = blob2.approx
+    min_pair = None
+    min_dist = np.linalg.norm(points1[0]-points2[0])
+    for p1 in points1:
+        for p2 in points2:
+            dist = np.linalg.norm(p1[0]-p2[0]) 
+            if dist < min_dist:
+                min_pair = (p1,p2)
+                min_dist = dist
+
+    return [min_pair,min_dist]
+
+def closest_pair_of_blobs_points(blobs):
+    accumulator = []
+    for pair in itertools.combinations(blobs,2):
+        accumulator.append(closest_pair_of_points_between_blobs(*pair))
+
+    return min(accumulator,key = lambda x : x[1])
+
+def join_2_points(p1, p2):
+    global img
+    cv2.line(img,(p1[0][0],p1[0][1]),(p2[0][0],p2[0][1]),(0,0,0),drawRadius)
+    updateEncodings()
+
+
+def join_blobs(source='button'):
+    global img,globalLevels
+
+    for level in globalLevels[1]:
+        if len(level.children) > 1:
+            pairs,_ = closest_pair_of_blobs_points(level.children)
+            join_2_points(*pairs)
+            # blob_with_min_area = min(level.children,key = lambda x: x.area)
+
+###### Join a Blob to the nearest edge #####
+
+
+def join_blob_to_edge(source='button'):
+
+    for level in globalLevels[1]:
+        for blob in level.children:
+            pairs,_ = closest_pair_of_points_between_blobs(blob,level)
+            join_2_points(*pairs)
+
+###### Split a blob #######
+
+def split_blob(blob):
+    pass
+
+
+
+
+
+############################################
+
 
 def set_target_dividers(posn_list):
     global targetDividers
@@ -2047,11 +2109,13 @@ if __name__ == "__main__":
     incBtn = Button(tkRoot, text="Inc", font=buttonTextFont, command=increase_blob)
     incBtn.place(x=1285, y=340, width=50, height=50)
 
-    decBtn = Button(tkRoot, text="Dec", font=buttonTextFont, command=decrease_blob)
+    decBtn = Button(tkRoot, text="Dec", font=buttonTextFont, command=join_blob_to_edge)
     decBtn.place(x=1345, y=340, width=50, height=50)
 
     redprtBtn = Button(tkRoot, text="RedPart", font=buttonTextFont, command=reduce_part)
     redprtBtn.place(x=1285, y=440, width=50, height=50)
+
+
 
     #and also some not Rahul's code
     fixBlobBtn = Button(tkRoot, text="Fix", font=buttonTextFont, command=auto_fix_blobs_btn)
