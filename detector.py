@@ -49,6 +49,7 @@ class Component:
         self.encoding = sys.maxint
         self.encChunks = []
         self.bitsRepresented = -1
+        self.protected = False
 
     def __str__(self):
         return "L: " + str(self.level) + ", #" + str(self.cNum) + " " + binaryString(self.encoding,

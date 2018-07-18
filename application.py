@@ -35,9 +35,10 @@ NUM_UNDO_STATES = 11 #number of undos will be one less than this
 BLACK = (0,0,0)
 GREY = (100,100,100) #unused in parent version
 WHITE = (255,255,255)
+LIGHT_YELLOW = (153,255,255)
 
 #global variables
-targetBinString = '110011'#'1110010110110011001110101101101111' #Put your target encoding here!
+targetBinString = '11001101110011011101'#'1110010110110011001110101101101111' #Put your target encoding here!
 
 #the rest of these variables should be left alone
 
@@ -57,6 +58,7 @@ greenText = '#00cc00'
 plusMinusFont = tkFont.Font(family='Helvetica', size=40, weight='bold')
 buttonTextFont = tkFont.Font(family='Helvetica', size=12)
 visualTargetFont = tkFont.Font(family='Courier', size=vTFontSize)
+sliderFont = tkFont.Font(family='Helvetica', size=10)
 
 markerMode = 'new'  # 'new' only; 'dtouch' not functional in this version
 expPhase = 3 # set to 3 for full markers (values 1 & 2 mimic conditions for corresponding experimental phases of the paper)
@@ -64,6 +66,7 @@ blobMode = 'number'
 blobOrderMode = 'area'
 partOrderMode = 'area'
 mode = 'idle'  # 'idle', 'drawing', 'erasing'
+tool = 'pen'
 lastX = -1
 lastY = -1
 drawColour = (0, 0, 0)
@@ -137,7 +140,7 @@ def satisfy_check(level,x,y):
     for child in level.children:
         if not out_contour(x ,y , child.contour):
             print("Failed in satisfy_check")
-            cv2.circle(img,(x,y),1,(255,0,0),-1)
+            # cv2.circle(img,(x,y),1,(255,0,0),-1)
             return False
 
     return True
@@ -150,26 +153,28 @@ def out_contour(x, y, contour):
 
     return True
 
-def in_contour( x, y, contour):
+def in_contour( x, y, contour, radius_multiplier=4):
     ret = cv2.pointPolygonTest(contour, (x, y), True)
-    radius_multiplier = 4
     if ret < (radius_multiplier*drawRadius):
-        print("Failed in in_contour")
+        # print("Failed in in_contour")
         return False
 
     return True
 
 def add_blob(part):
     global img,drawRadius,drawColour
+    radius = 5
+    colour = BLACK
+
     extreme_top = tuple(part.contour[part.contour[:, :, 0].argmin()][0])
     extreme_bottom = tuple(part.contour[part.contour[:, :, 0].argmax()][0])
     extreme_left = tuple(part.contour[part.contour[:, :, 1].argmin()][0])
     extreme_right = tuple(part.contour[part.contour[:, :, 1].argmax()][0])
     print(extreme_top,extreme_bottom,extreme_left,extreme_right)
-    cv2.circle(img,extreme_left,1,(0,0,255),-1)
-    cv2.circle(img,extreme_right,1,(0,0,255),-1)
-    cv2.circle(img,extreme_top,1,(0,0,255),-1)
-    cv2.circle(img,extreme_bottom,1,(0,0,255),-1)
+    # cv2.circle(img,extreme_left,1,(0,0,255),-1)
+    # cv2.circle(img,extreme_right,1,(0,0,255),-1)
+    # cv2.circle(img,extreme_top,1,(0,0,255),-1)
+    # cv2.circle(img,extreme_bottom,1,(0,0,255),-1)
     range_in_x = (extreme_top[0],extreme_bottom[0])
     range_in_y = (extreme_left[1],extreme_right[1])
     count = 0
@@ -181,7 +186,7 @@ def add_blob(part):
 
         if satisfy_check(part,sampled_x,sampled_y) and in_contour(sampled_x,sampled_y,part.contour):
             print("Drawing on %d %d" % (sampled_x,sampled_y))
-            cv2.circle(img, (sampled_x, sampled_y), drawRadius, drawColour, -1)
+            cv2.circle(img, (sampled_x, sampled_y), radius, colour, -1)
             # updateEncodings()
             break
         count += 1
@@ -191,6 +196,7 @@ def add_blob(part):
 
 def increase_blob(source='button'):
     global undoStack, undoIndex, img, globalLevels
+    exit_protect_mode()
     print(globalLevels)
     for part in globalLevels[1]:
         add_blob(part)
@@ -217,6 +223,7 @@ def delete_first_blob(part):
 
 def decrease_blob(source='button'):
     global undoStack, undoIndex, img, globalLevels
+    exit_protect_mode()
     print(globalLevels)
     for level in globalLevels[1]:
         if len(level.children) > 2:
@@ -259,6 +266,7 @@ def join_2_points(p1, p2):
 
 def join_blobs(source='button'):
     global img,globalLevels
+    exit_protect_mode()
 
     for level in globalLevels[1]:
         if len(level.children) > 1:
@@ -270,6 +278,7 @@ def join_blobs(source='button'):
 
 
 def join_blob_to_edge(source='button'):
+    exit_protect_mode()
 
     for level in globalLevels[1]:
         for blob in level.children:
@@ -294,8 +303,10 @@ def set_target_dividers(posn_list):
     for posn in posn_list:
         targetDividers = targetDividers[:posn] + '|' + targetDividers[posn+1:]
 
-def auto_fix_blobs():
+def auto_fix_blobs(prefVal=0.0):
     global mainRoot, targetBinString, targetDividers
+    cost_base = 10
+    protected_multiplier = 100
 
     if mainRoot is None or not mainRoot.children:
         print "Cannot fix blobs; No parts found"
@@ -303,10 +314,15 @@ def auto_fix_blobs():
 
     img_part_vals = []
     sorted_parts = sortParts(mainRoot, 'area')
+    multipliers = []
     for part in sorted_parts:
         img_part_vals.append(part.encoding)
+        if part.protected:
+            multipliers.append(protected_multiplier)
+        else:
+            multipliers.append(1)
 
-    fixed_target = find_divisions(img_part_vals,targetBinString,abs_diff_cost)
+    fixed_target = find_divisions(img_part_vals,targetBinString,exp_weight_cost_fun(cost_base, prefVal),multipliers)
     target_part_vals = fixed_target[1]
     set_target_dividers(fixed_target[2])
 
@@ -326,9 +342,56 @@ def auto_fix_blobs():
     updateEncodings()
 
 def auto_fix_blobs_btn(source='button'):
-    auto_fix_blobs()
+    global addRemovePrefScale
+    exit_protect_mode()
+    prefVal = addRemovePrefScale.get()
+    prefVal = float(prefVal)/20.0
+    auto_fix_blobs(prefVal)
     updateEncodings()
-    logEvent(source + 'autoFixBlobs')
+    logEvent(source + 'auto_fix_blobs')
+
+def protect_btn(source='button'):
+    global tool, protectBtn
+    if tool == 'protect':
+        exit_protect_mode()
+    else:
+        protectBtn.config(relief=SUNKEN)
+        tool = 'protect'
+    logEvent(source + 'protect_toggle')
+
+def exit_protect_mode():
+    global tool, protectBtn, protectImg, drawProtected
+    protectBtn.config(relief=RAISED)
+    tool = 'pen'
+    protectImg = np.ones((CANVAS_HEIGHT, CANVAS_WIDTH, 3), np.uint8) * 255
+    drawProtected = False
+
+def toggle_blob_protection(x, y):
+    global mainRoot
+    if mainRoot is None:
+        return
+    selected = None
+    for part in mainRoot.children:
+        if in_contour(x, y, part.contour, 0):
+            selected = part
+            break
+    if selected is not None:
+        if selected.protected:
+            selected.protected = False
+        else:
+            selected.protected = True
+    colour_protected()
+
+def colour_protected():
+    global mainRoot, protectImg, drawProtected
+    protectImg = np.ones((CANVAS_HEIGHT, CANVAS_WIDTH, 3), np.uint8) * 255
+    drawProtected = False
+    if mainRoot is not None:
+        for part in mainRoot.children:
+            if part.protected:
+                cv2.drawContours(protectImg, [part.contour], -1, LIGHT_YELLOW, -1)
+                drawProtected = True
+    updateGuiImage()
 
 
 ####### Code for Reducing a part #######
@@ -366,6 +429,7 @@ def cut_part(part):
 
 def reduce_part(source='button'):
     global undoStack, undoIndex, img, globalLevels
+    exit_protect_mode()
     for level in globalLevels[1]:
         cut_part(level)
     logEvent(source + 'reduce_part')
@@ -561,6 +625,7 @@ def addUndoable():
 #perform one undo action on the canvas
 def undo(source='button'):
     global undoStack, undoIndex, img
+    exit_protect_mode()
     if undoIndex < len(undoStack)-1:
         img = np.copy(undoStack[undoIndex+1])
         undoIndex += 1
@@ -571,6 +636,7 @@ def undo(source='button'):
 #perform one redo action on the canvas
 def redo(source='button'):
     global undoStack, undoIndex, img
+    exit_protect_mode()
     if undoIndex > 0:
         img = np.copy(undoStack[undoIndex-1])
         undoIndex -=1
@@ -580,25 +646,35 @@ def redo(source='button'):
 
 #handles mouse clicks
 def leftMouseDown(event):
-    global mode
-    mode = 'drawing'
-    drawStuff(event.x, event.y)
+    global mode, tool
+    if tool == 'protect':
+        toggle_blob_protection(event.x, event.y)
+    else:
+        mode = 'drawing'
+        drawStuff(event.x, event.y)
     logEvent('leftMouseDown', event.x, event.y)
 
 
 #handles mouse releases
 def leftMouseUp(event):
-    global lastX, lastY
-    mode = 'idle'
-    lastX = -1
-    lastY = -1
-    addUndoable()
+    global lastX, lastY, tool
+    if tool == 'protect':
+        pass
+    else:
+        mode = 'idle'
+        lastX = -1
+        lastY = -1
+        addUndoable()
     logEvent('leftMouseUp', event.x, event.y)
 
 
 #handles mouse dragging while clicked
 def leftMouseMove(event):
-    drawStuff(event.x, event.y)
+    global tool
+    if tool == 'protect':
+        pass
+    else:
+        drawStuff(event.x, event.y)
     logEvent('leftMouseMove', event.x, event.y)
 
 
@@ -901,6 +977,7 @@ def clearRootAndLevels():
 #clears the current canvas (reset to white)
 def clearCanvas(source='button'):
     global img, markedImg, suggestionTopString, globalLevels, mainRoot
+    exit_protect_mode()
     img = np.ones((CANVAS_HEIGHT, CANVAS_WIDTH, 3), np.uint8) * 255
     markedImg = img.copy()
     suggestionTopString = ""
@@ -914,6 +991,7 @@ def clearCanvas(source='button'):
 #makes the brush a little bigger, up to a maximum
 def growBrush(source='button'):
     global drawRadius
+    exit_protect_mode()
     growAmount = 2
     brushMax = 80
     if drawRadius+growAmount <= brushMax:
@@ -927,6 +1005,7 @@ def growBrush(source='button'):
 #makes the brush a little smaller, down to a minimum
 def shrinkBrush(source='button'):
     global drawRadius
+    exit_protect_mode()
     shrinkAmount = 2
     brushMin = 5
     if drawRadius-shrinkAmount >= brushMin:
@@ -956,9 +1035,14 @@ def resetGuiImage():
 
 #updates the canvas portion of the GUI to the current canvas
 def updateGuiImage():
-    global canvasPanel, markedImg
-
-    displayImg = cv2.cvtColor(markedImg, cv2.COLOR_BGR2RGB)
+    global canvasPanel, markedImg, protectImg, drawProtected
+    if drawProtected:
+        combined = protectImg.copy()
+        marked_posns = np.where(markedImg != WHITE)
+        combined[marked_posns[0],marked_posns[1]] = markedImg[marked_posns[0],marked_posns[1]]
+        displayImg = cv2.cvtColor(combined, cv2.COLOR_BGR2RGB)
+    else:
+        displayImg = cv2.cvtColor(markedImg, cv2.COLOR_BGR2RGB)
     displayImg = Image.fromarray(displayImg)
     displayImg = ImageTk.PhotoImage(displayImg)
     canvasPanel.configure(image=displayImg)
@@ -983,6 +1067,7 @@ def updateGuiBrush():
 #sets the brush to a preset colour/size combo
 def smallBlackBrush():
     global drawRadius, drawColour
+    exit_protect_mode()
     drawRadius = 5
     drawColour = BLACK
     updateBrush()
@@ -992,6 +1077,7 @@ def smallBlackBrush():
 #sets the brush to a preset colour/size combo
 def medBlackBrush():
     global drawRadius, drawColour
+    exit_protect_mode()
     drawRadius = 12
     drawColour = BLACK
     updateBrush()
@@ -1001,6 +1087,7 @@ def medBlackBrush():
 #sets the brush to a preset colour/size combo
 def largeBlackBrush():
     global drawRadius, drawColour
+    exit_protect_mode()
     drawRadius = 25
     drawColour = BLACK
     updateBrush()
@@ -1010,6 +1097,7 @@ def largeBlackBrush():
 #sets the brush to a preset colour/size combo (unused)
 def smallGreyBrush():
     global drawRadius, drawColour
+    exit_protect_mode()
     drawRadius = 5
     drawColour = GREY
     updateBrush()
@@ -1019,6 +1107,7 @@ def smallGreyBrush():
 #sets the brush to a preset colour/size combo (unused)
 def medGreyBrush():
     global drawRadius, drawColour
+    exit_protect_mode()
     drawRadius = 12
     drawColour = GREY
     updateBrush()
@@ -1028,6 +1117,7 @@ def medGreyBrush():
 #sets the brush to a preset colour/size combo (unused)
 def largeGreyBrush():
     global drawRadius, drawColour
+    exit_protect_mode()
     drawRadius = 25
     drawColour = GREY
     updateBrush()
@@ -1037,6 +1127,7 @@ def largeGreyBrush():
 #sets the brush to a preset colour/size combo
 def smallWhiteBrush():
     global drawRadius, drawColour
+    exit_protect_mode()
     drawRadius = 5
     drawColour = WHITE
     updateBrush()
@@ -1046,6 +1137,7 @@ def smallWhiteBrush():
 #sets the brush to a preset colour/size combo
 def medWhiteBrush():
     global drawRadius, drawColour
+    exit_protect_mode()
     drawRadius = 12
     drawColour = WHITE
     updateBrush()
@@ -1055,6 +1147,7 @@ def medWhiteBrush():
 #sets the brush to a preset colour/size combo
 def largeWhiteBrush():
     global drawRadius, drawColour
+    exit_protect_mode()
     drawRadius = 25
     drawColour = WHITE
     updateBrush()
@@ -1929,6 +2022,7 @@ if __name__ == "__main__":
     resetVars()
     checkCommandLineEncoding()
     img = np.ones((CANVAS_HEIGHT, CANVAS_WIDTH, 3), np.uint8) * 255 #the canvas
+    protectImg = img.copy() #only contains colour for protected parts
     markedImg = img.copy() #the canvas with tool overlays
     suggestionImg = np.ones((CANVAS_HEIGHT, CANVAS_WIDTH, 3), np.uint8) * 255
     suggestionLocs = np.where(suggestionImg != WHITE)
@@ -1956,6 +2050,7 @@ if __name__ == "__main__":
     waitAmount = 10
     appRunning = True
     levelsMutex = mutex.mutex()
+    drawProtected = False
 
     ellipsisImg = cv2.imread('ellipsis.png')
     ellipsisImg = Image.fromarray(ellipsisImg)
@@ -2107,19 +2202,26 @@ if __name__ == "__main__":
 
     ########## Rahul's code ###############
     incBtn = Button(tkRoot, text="Inc", font=buttonTextFont, command=increase_blob)
-    incBtn.place(x=1285, y=340, width=50, height=50)
+    incBtn.place(x=1285, y=300, width=50, height=50)
 
     decBtn = Button(tkRoot, text="Dec", font=buttonTextFont, command=join_blob_to_edge)
-    decBtn.place(x=1345, y=340, width=50, height=50)
+    decBtn.place(x=1345, y=300, width=50, height=50)
 
     redprtBtn = Button(tkRoot, text="RedPart", font=buttonTextFont, command=reduce_part)
-    redprtBtn.place(x=1285, y=440, width=50, height=50)
-
-
+    redprtBtn.place(x=1285, y=360, width=50, height=50)
 
     #and also some not Rahul's code
     fixBlobBtn = Button(tkRoot, text="Fix", font=buttonTextFont, command=auto_fix_blobs_btn)
-    fixBlobBtn.place(x=1285, y=540, width=50, height=50)
+    fixBlobBtn.place(x=1285, y=420, width=50, height=50)
+
+    protectBtn = Button(tkRoot, text="Prot.", font=buttonTextFont, command=protect_btn)
+    protectBtn.place(x=1345, y=420, width=50, height=50)
+
+    addRemovePrefScale = Scale(tkRoot, from_=-20, to=20, orient=HORIZONTAL, label='Prefer Removing or Adding Blobs')
+    addRemovePrefScale.place(x=1270, y=480, width=200)
+    ambPanel = Label(text="Removing           Neutral              Adding", font=sliderFont)
+    ambPanel.place(x=1250, y=540, width=240, height=20)
+
     ######################################
     visualTargetPanel = None
     resetVTGuiElements()

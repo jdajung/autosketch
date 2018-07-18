@@ -1,3 +1,4 @@
+import math
 from conversions import *
 
 #finds the absolute difference between values in the same position of 2 lists
@@ -14,7 +15,11 @@ def list_abs_diff_cost(part_vals, proposed_vals):
 
 #cost function that just takes the absolute difference between two values
 def abs_diff_cost(part_val, proposed_val):
-    return abs(part_val-proposed_val)
+    return abs(part_val - proposed_val)
+
+#produces a cost function that weights additions as 1 and removals as base^weight
+def exp_weight_cost_fun(base, weight):
+    return lambda part, proposed: proposed - part if part <= proposed else math.pow(base,weight)*(part - proposed)
 
 #get the decimal value of a bitstring, or None if the string is invalid (starts with a 0 and has other digits)
 def get_bit_value(bits):
@@ -27,16 +32,18 @@ def get_bit_value(bits):
 #for the given part structure (part_vals), target bitstring, and cost function,
 #find the divisions of the target that produce the lowest cost when compared to part_vals
 #output of the form [cost_value, [list of part values], [list of divider posns (divider comes after the posn)]]
-def find_divisions(part_vals, bitstring, cost_fun):
+def find_divisions(part_vals, bitstring, cost_fun, multipliers=None):
     num_dividers = len(part_vals) - 1
     num_posns = len(bitstring) - 1
     costs = [[None for _ in range(num_posns)] for _ in range(num_dividers)]
+    if multipliers is None:
+        multipliers = [1.0 for _ in range(num_dividers+1)]
 
     #only 0 or 1 parts given
     if num_dividers <= 0:
         bit_val = get_bit_value(bitstring)
         if num_dividers == 0 and bit_val is not None:
-            return [cost_fun(part_vals[0],bit_val), [bit_val], []]
+            return [cost_fun(part_vals[0],bit_val)*multipliers[0], [bit_val], []]
         else:
             return None
 
@@ -45,15 +52,15 @@ def find_divisions(part_vals, bitstring, cost_fun):
         if num_dividers > 1:
             bit_val = get_bit_value(bitstring[:(i+1)])
             if bit_val is not None:
-                costs[0][i] = [cost_fun(part_vals[0],bit_val), [bit_val], [i]]
+                costs[0][i] = [cost_fun(part_vals[0],bit_val)*multipliers[0], [bit_val], [i]]
             else:
                 costs[0][i] = None
         else: #special case if there is only 1 divider
             bit_val_1 = get_bit_value(bitstring[:(i+1)])
             bit_val_2 = get_bit_value(bitstring[(i+1):])
             if bit_val_1 is not None and bit_val_2 is not None:
-                cost_1 = cost_fun(part_vals[0],bit_val_1)
-                cost_2 = cost_fun(part_vals[1],bit_val_2)
+                cost_1 = cost_fun(part_vals[0],bit_val_1)*multipliers[0]
+                cost_2 = cost_fun(part_vals[1],bit_val_2)*multipliers[1]
                 costs[0][i] = [cost_1+cost_2, [bit_val_1,bit_val_2], [i]]
 
     #fill all other columns of costs
@@ -65,7 +72,7 @@ def find_divisions(part_vals, bitstring, cost_fun):
                 if i < num_dividers-1:
                     bit_val = get_bit_value(bitstring[k+1:j+1])
                     if bit_val is not None:
-                        extend_cost = cost_fun(part_vals[i],bit_val)
+                        extend_cost = cost_fun(part_vals[i],bit_val)*multipliers[i]
                     else:
                         extend_cost = None
                     bit_val = [bit_val]
@@ -73,8 +80,8 @@ def find_divisions(part_vals, bitstring, cost_fun):
                     bit_val_1 = get_bit_value(bitstring[k+1:j+1])
                     bit_val_2 = get_bit_value(bitstring[j+1:])
                     if bit_val_1 is not None and bit_val_2 is not None:
-                        extend_cost_1 = cost_fun(part_vals[i],bit_val_1)
-                        extend_cost_2 = cost_fun(part_vals[i+1],bit_val_2)
+                        extend_cost_1 = cost_fun(part_vals[i],bit_val_1)*multipliers[i]
+                        extend_cost_2 = cost_fun(part_vals[i+1],bit_val_2)*multipliers[i+1]
                         extend_cost = extend_cost_1 + extend_cost_2
                     else:
                         extend_cost = None
