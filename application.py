@@ -396,36 +396,70 @@ def colour_protected():
 
 ####### Code for Reducing a part #######
 
+
 def cut_part(part):
-    global img,drawRadius
+    global img
+    print img.shape
     point = np.random.choice(range(len(part.contour)),1)
-    print part.contour[point][0][0]
-    x, y = part.contour[point][0][0]
-    temp_part = part.contour
-    temp_part = np.delete(temp_part,point,0)
-    closest_point = min(temp_part,key = lambda v: (v[0][0] - x)**2 + (v[0][1] - y)**2)
-    print(closest_point)
-    c_x ,c_y = closest_point[0]
-    dv_x = x - c_x
-    dv_y = y - c_y
-    mag = np.sqrt(dv_x**2 + dv_y**2)
-    dv_x = dv_x/mag
-    dv_y = dv_y/mag
-    temp = dv_x 
-    dv_x = -dv_y 
-    dv_y = temp
-    length = 1
+    y, x = part.contour[point][0][0]
+    # cv2.circle(img, (y,x), 2 , (255,0,0), -1)
+    centre_y,centre_x = part.centroid
+    # cv2.circle(img, (centre_y,centre_x), 2 , (0,255,0), -1)
+    # mcentre_x, mcentre_y = 2*centre[0] - x, 2*centre[1] - y
+    slope = (centre_y - y) / float(centre_x - x)
+    bw  = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # print slope,centre_y - y,centre_x - x
+    distance = 15
     while True:
-        new_x = int(x + dv_x * length)
-        new_y = int(y + dv_y * length)
-        print(new_x,new_y)
-        b,g,r = img[new_x,new_y,:]
-        if b == 255 and g == 255 and r == 255:
+        new_x = (x + distance / np.sqrt(1 + slope**2))
+        new_y = (y + slope*(x - new_x))
+        new_x1 = (x - distance / np.sqrt(1 + slope**2))
+        new_y1 = (y + slope*(x - new_x1))
+        if ((new_x1-centre_x)**2 + (new_y1-centre_y)**2) > ((new_x-centre_x)**2 + (new_y-centre_y)**2):
+            final_x,final_y = int(new_x1),int(new_y1)
+        else:
+            final_x,final_y = int(new_x),int(new_y)
+        # print x,y,centre_x,centre_y,new_x1,new_y1,new_x,new_y
+        # cv2.circle(img, (int(new_y),int(new_x)), 3 , (0,0,255), -1)
+        # cv2.circle(img, (int(new_y1),int(new_x1)), 3 , (0,0,255), -1)
+        # cv2.circle(img, (final_y,final_x), 3 , (0,255,255), -1)
+        val = bw[final_x,final_y]
+        if val == 255:
             break
-        length = length + 2
-    cv2.line(img,(x,y),(new_x,new_y),(255,0,0),4)
-    # cv2.circle(img, (x,y), drawRadius , (255,255,255), -1) # @todo : store the size of radius at each point
+        distance = distance + 1
+    cv2.line(img,(y,x),(final_y,final_x),(255,255,255),5)
     updateEncodings()
+
+# def cut_part(part):
+#     global img,drawRadius
+#     point = np.random.choice(range(len(part.contour)),1)
+#     print part.contour[point][0][0]
+#     x, y = part.contour[point][0][0]
+#     temp_part = part.contour
+#     temp_part = np.delete(temp_part,point,0)
+#     closest_point = min(temp_part,key = lambda v: (v[0][0] - x)**2 + (v[0][1] - y)**2)
+#     print(closest_point)
+#     c_x ,c_y = closest_point[0]
+#     dv_x = x - c_x
+#     dv_y = y - c_y
+#     mag = np.sqrt(dv_x**2 + dv_y**2)
+#     dv_x = dv_x/mag
+#     dv_y = dv_y/mag
+#     temp = dv_x 
+#     dv_x = -dv_y 
+#     dv_y = temp
+#     length = 1
+#     while True:
+#         new_x = int(x + dv_x * length)
+#         new_y = int(y + dv_y * length)
+#         print(new_x,new_y)
+#         b,g,r = img[new_x,new_y,:]
+#         if b == 255 and g == 255 and r == 255:
+#             break
+#         length = length + 2
+#     cv2.line(img,(x,y),(new_x,new_y),(255,0,0),4)
+#     # cv2.circle(img, (x,y), drawRadius , (255,255,255), -1) # @todo : store the size of radius at each point
+#     updateEncodings()
 
 def reduce_part(source='button'):
     global undoStack, undoIndex, img, globalLevels
