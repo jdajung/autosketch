@@ -401,6 +401,7 @@ def cut_part(part):
     global img
     print img.shape
     point = np.random.choice(range(len(part.contour)),1)
+    slope = inf
     y, x = part.contour[point][0][0]
     # cv2.circle(img, (y,x), 2 , (255,0,0), -1)
     centre_y,centre_x = part.centroid
@@ -408,13 +409,14 @@ def cut_part(part):
     # mcentre_x, mcentre_y = 2*centre[0] - x, 2*centre[1] - y
     slope = (centre_y - y) / float(centre_x - x)
     bw  = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # cv2.line(img,(y,x),(centre_y,centre_x),(255,0,255),5)
     # print slope,centre_y - y,centre_x - x
-    distance = 15
+    distance = 15.0
     while True:
-        new_x = (x + distance / np.sqrt(1 + slope**2))
-        new_y = (y + slope*(x - new_x))
-        new_x1 = (x - distance / np.sqrt(1 + slope**2))
-        new_y1 = (y + slope*(x - new_x1))
+        new_x = (x + distance / (np.sqrt(1 + slope**2)))
+        new_y = (y + slope*(new_x - x))
+        new_x1 = (x - distance / (np.sqrt(1 + slope**2)))
+        new_y1 = (y + slope*(new_x1 - x))
         if ((new_x1-centre_x)**2 + (new_y1-centre_y)**2) > ((new_x-centre_x)**2 + (new_y-centre_y)**2):
             final_x,final_y = int(new_x1),int(new_y1)
         else:
@@ -423,6 +425,7 @@ def cut_part(part):
         # cv2.circle(img, (int(new_y),int(new_x)), 3 , (0,0,255), -1)
         # cv2.circle(img, (int(new_y1),int(new_x1)), 3 , (0,0,255), -1)
         # cv2.circle(img, (final_y,final_x), 3 , (0,255,255), -1)
+        # break
         val = bw[final_x,final_y]
         if val == 255:
             break
