@@ -38,7 +38,7 @@ WHITE = (255,255,255)
 LIGHT_YELLOW = (153,255,255)
 
 #global variables
-targetBinString = '11001101110011011101'#'1110010110110011001110101101101111' #Put your target encoding here!
+targetBinString = '11001101'#'1110010110110011001110101101101111' #Put your target encoding here!
 
 #the rest of these variables should be left alone
 
@@ -464,8 +464,48 @@ def cut_part(part):
 #     # cv2.circle(img, (x,y), drawRadius , (255,255,255), -1) # @todo : store the size of radius at each point
 #     updateEncodings()
 
+def bounding_box_check(part1, part2):
+    max_dist = 20 #Maximum allowable distance between bounding boxes
+    if part1.box is None:
+        part1.box = cv2.boundingRect(part1.approx)
+    if part2.box is None:
+        part2.box = cv2.boundingRect(part2.approx)
+    p1_left = part1.box[0]
+    p1_right = part1.box[0] + part1.box[2]
+    p1_top = part1.box[1]
+    p1_bot = part1.box[1] + part1.box[3]
+    p2_left = part2.box[0]
+    p2_right = part2.box[0] + part2.box[2]
+    p2_top = part2.box[1]
+    p2_bot = part2.box[1] + part2.box[3]
+    checks = [p1_right-p2_left,p2_right-p1_left,p1_bot-p2_top,p2_bot-p1_top]
+    ans = True
+    for check in checks:
+        if check < -max_dist:
+            ans = False
+    return ans
+
+
+def closest_point_pairs():
+    global mainRoot, markedImg
+    if mainRoot is None or len(mainRoot.children) <= 1:
+        return
+
+    #check pairs of parts
+    for i in range(len(mainRoot.children)):
+        part1 = mainRoot.children[i]
+        for j in range(i+1,len(mainRoot.children)):
+            part2 = mainRoot.children[j]
+            if bounding_box_check(part1,part2):
+                print part1.centroid
+                cv2.line(markedImg,part1.centroid,part2.centroid,(0,0,255),2)
+    updateGuiImage()
+
+    #check parts to root
+
 def reduce_part(source='button'):
     global undoStack, undoIndex, img, globalLevels
+    closest_point_pairs()
     exit_protect_mode()
     for level in globalLevels[1]:
         cut_part(level)
