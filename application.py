@@ -474,6 +474,43 @@ def reduce_part(source='button'):
 ##########################################
 
 
+
+###### Determine adjacent point ########
+
+def determine_adjacent(point1, point2):
+    global img 
+    bw  = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    slope = (point2[0] - point1[0]) / float(point2[1] - point2[1])
+    angle = np.arctan2(point2[0] - point1[0],point2[1] - point2[1])
+    distance = 1
+    nw,nb = -1,0
+    while True:
+        new_x = distance*np.cos(angle) + point1[1]
+        new_y = distance*np.sin(angle) + point1[0]
+        val = bw[int(np.round(new_x)),int(np.round(new_y))]
+        if  val == 255:
+            if nb == 0:
+                nw1 += 1
+            else:
+                nw2 += 1
+        elif val == 0:
+            if nw1 == 0 or nw2 != 0:
+                return False
+            else:
+                nb += 1
+
+        distance += 1
+
+    if nw > -1 and nb > 0 and nw2 > -1:
+        return True
+    
+    return False
+
+#######################################
+
+
+
+
 #figures out the current encoding of the image and updates all overlays
 def updateEncodingsForReal():
     global drawEncodings, drawCentroids, drawAmbToggle, suggestionIndex, suggestionImg, suggestions, \
