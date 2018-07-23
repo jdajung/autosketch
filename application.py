@@ -135,25 +135,25 @@ def updateEncodings():
     if not usingThreading:
         updateEncodingsForReal()
 
-def satisfy_check(level,x,y):
+def satisfy_check(level,x,y,radius):
     global img
     for child in level.children:
-        if not out_contour(x ,y , child.contour):
+        if not out_contour(x ,y , child.contour,radius):
             print("Failed in satisfy_check")
             # cv2.circle(img,(x,y),1,(255,0,0),-1)
             return False
 
     return True
 
-def out_contour(x, y, contour,radius_multiplier=3):
+def out_contour(x, y, contour,radius,radius_multiplier=3):
     global drawRadius
     ret = cv2.pointPolygonTest(contour, (y, x), True)
-    if ret > -(radius_multiplier*drawRadius):
+    if ret > -(radius_multiplier*radius):
         return False
 
     return True
 
-def in_contour( x, y, contour, radius_multiplier=3):
+def in_contour( x, y, contour,radius, radius_multiplier=3):
     ret = cv2.pointPolygonTest(contour, (y, x), True)
     if ret < (radius_multiplier*drawRadius):
         # print("Failed in in_contour")
@@ -184,10 +184,10 @@ def add_blob(part):
         sampled_x = int(np.random.uniform(range_in_x[0],range_in_x[1],1))
         sampled_y = int(np.random.uniform(range_in_y[0],range_in_y[1],1))
 
-        if satisfy_check(part,sampled_x,sampled_y) and in_contour(sampled_x,sampled_y,part.contour):
+        if satisfy_check(part,sampled_x,sampled_y,radius) and in_contour(sampled_x,sampled_y,part.contour,radius):
             print("Drawing on %d %d" % (sampled_x,sampled_y))
             cv2.circle(img, (sampled_y, sampled_x), radius, colour, -1)
-            # updateEncodings()
+            updateEncodings()
             break
         count += 1
         print(sampled_x,sampled_y,"No")
@@ -327,10 +327,13 @@ def auto_fix_blobs(prefVal=0.0):
     set_target_dividers(fixed_target[2])
 
     for i in range(len(sorted_parts)):
+        sorted_parts = sortParts(mainRoot, 'area')
         sorted_parts[i].children = sortBlobs(sorted_parts[i], 'area')
         counter = 0
         max_count = 100
         while img_part_vals[i] != target_part_vals[i] and counter < max_count:
+            sorted_parts = sortParts(mainRoot, 'area')
+            sorted_parts[i].children = sortBlobs(sorted_parts[i], 'area')
             if img_part_vals[i] < target_part_vals[i]:
                 add_blob(sorted_parts[i])
                 img_part_vals[i] += 1
