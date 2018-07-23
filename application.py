@@ -534,7 +534,7 @@ def determine_adjacent(point1, point2):
             else:
                 nw2 += 1
         elif val == 0:
-            if nw1 == 0 or nw2 != 0:
+            if nw2 != 0:
                 return False
             else:
                 nb += 1
