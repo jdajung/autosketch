@@ -401,7 +401,7 @@ def cut_part(part):
     global img
     print img.shape
     point = np.random.choice(range(len(part.contour)),1)
-    slope = inf
+    #slope = inf
     y, x = part.contour[point][0][0]
     # cv2.circle(img, (y,x), 2 , (255,0,0), -1)
     centre_y,centre_x = part.centroid
@@ -485,20 +485,43 @@ def bounding_box_check(part1, part2):
             ans = False
     return ans
 
+def manhattan_dist(p1,p2):
+    return abs(p1[0]-p2[0]) + abs(p1[1]-p2[1])
+
+def choose_contour_points(contour):
+    min_sep = 20 #minimum Manhattan distance between consecutive points
+    if contour is None or len(contour) <= 0:
+        return []
+    selected = [contour[0][0]]
+    print type(selected[0]), selected[0]
+    for item in contour:
+        if manhattan_dist(item[0], selected[-1]) >= min_sep:
+            selected.append(item[0])
+    return selected
 
 def closest_point_pairs():
     global mainRoot, markedImg
     if mainRoot is None or len(mainRoot.children) <= 1:
         return
-
+    print type(mainRoot.contour)
+    print mainRoot.contour
     #check pairs of parts
     for i in range(len(mainRoot.children)):
         part1 = mainRoot.children[i]
         for j in range(i+1,len(mainRoot.children)):
             part2 = mainRoot.children[j]
             if bounding_box_check(part1,part2):
-                print part1.centroid
+                if part1.select_points is None:
+                    part1.select_points = choose_contour_points(part1.contour)
+                if part2.select_points is None:
+                    part2.select_points = choose_contour_points(part2.contour)
                 cv2.line(markedImg,part1.centroid,part2.centroid,(0,0,255),2)
+                for point in part1.contour:
+                    cv2.circle(markedImg, tuple(point[0]), 4, (0,255,0), -1)
+                for point in part1.select_points:
+                    cv2.circle(markedImg, tuple(point), 2, (255,0,0), -1)
+                
+
     updateGuiImage()
 
     #check parts to root
@@ -507,8 +530,8 @@ def reduce_part(source='button'):
     global undoStack, undoIndex, img, globalLevels
     closest_point_pairs()
     exit_protect_mode()
-    for level in globalLevels[1]:
-        cut_part(level)
+    # for level in globalLevels[1]:
+    #     cut_part(level)
     logEvent(source + 'reduce_part')
 
 ##########################################

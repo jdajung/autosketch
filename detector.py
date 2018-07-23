@@ -38,6 +38,7 @@ class Component:
         self.level = level
         self.approx = cv2.approxPolyDP(contour, APPROX_POLY_FACTOR * cv2.arcLength(contour, True), True)
         self.box = None
+        self.select_points = None
         self.convex = cv2.isContourConvex(self.approx)
         self.area = cv2.contourArea(contour)
         self.centroid = getCentroid(contour)
