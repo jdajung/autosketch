@@ -488,23 +488,25 @@ def bounding_box_check(part1, part2):
 def manhattan_dist(p1,p2):
     return abs(p1[0]-p2[0]) + abs(p1[1]-p2[1])
 
+def square_dist(p1,p2):
+    return (p1[0]-p2[0])**2 + (p1[1]-p2[1])**2
+
 def choose_contour_points(contour):
     min_sep = 20 #minimum Manhattan distance between consecutive points
     if contour is None or len(contour) <= 0:
         return []
     selected = [contour[0][0]]
-    print type(selected[0]), selected[0]
     for item in contour:
         if manhattan_dist(item[0], selected[-1]) >= min_sep:
             selected.append(item[0])
     return selected
 
+
 def closest_point_pairs():
     global mainRoot, markedImg
     if mainRoot is None or len(mainRoot.children) <= 1:
         return
-    print type(mainRoot.contour)
-    print mainRoot.contour
+    min_list = []
     #check pairs of parts
     for i in range(len(mainRoot.children)):
         part1 = mainRoot.children[i]
@@ -515,14 +517,53 @@ def closest_point_pairs():
                     part1.select_points = choose_contour_points(part1.contour)
                 if part2.select_points is None:
                     part2.select_points = choose_contour_points(part2.contour)
-                cv2.line(markedImg,part1.centroid,part2.centroid,(0,0,255),2)
-                for point in part1.contour:
-                    cv2.circle(markedImg, tuple(point[0]), 4, (0,255,0), -1)
-                for point in part1.select_points:
-                    cv2.circle(markedImg, tuple(point), 2, (255,0,0), -1)
+                min_tuple = None
+
+                # cv2.line(markedImg,part1.centroid,part2.centroid,(0,0,255),2)
+                # for point in part1.contour:
+                #     cv2.circle(markedImg, tuple(point[0]), 4, (0,255,0), -1)
+                # for point in part1.select_points:
+                #     cv2.circle(markedImg, tuple(point), 2, (255,0,0), -1)
+
+                for p1_point in part1.select_points:
+                    forward_i = 0
+                    backward_i = -1
+                    last_dist = None
+                    num_p2_points = len(part2.select_points)
+
+                    while forward_i < num_p2_points:
+                        p2_point = part2.select_points[forward_i]
+                        curr_dist = square_dist(p1_point,p2_point)
+                        if last_dist is None or curr_dist <= last_dist:
+                            last_dist = curr_dist
+                            if determine_adjacent(p1_point,p2_point):
+                                min_tuple = (curr_dist, p1_point, p2_point)
+                            forward_i += 1
+                        else:
+                            break
+                    last_dist = None
+                    while (backward_i+num_p2_points) > forward_i:
+                        p2_point = part2.select_points[backward_i]
+                        curr_dist = square_dist(p1_point,p2_point)
+                        if last_dist is None or curr_dist <= last_dist:
+                            if (min_tuple is None or curr_dist <= min_tuple[0]) and determine_adjacent(p1_point,p2_point):
+                                min_tuple = (curr_dist, p1_point, p2_point)
+                            last_dist = curr_dist
+                            backward_i -= 1
+                        else:
+                            break
+
+                if min_tuple is not None:
+                    min_list.append((min_tuple[0],tuple(min_tuple[1]),tuple(min_tuple[2]),part1.cNum,part2.cNum))
+
+    for item in min_list:
+        cv2.line(markedImg,item[1],item[2],(0,0,255),2)
+    updateGuiImage()
+    return min_list
+
                 
 
-    updateGuiImage()
+    # updateGuiImage()
 
     #check parts to root
 
@@ -546,7 +587,7 @@ def determine_adjacent(point1, point2):
     slope = (point2[0] - point1[0]) / float(point2[1] - point2[1])
     angle = np.arctan2(point2[0] - point1[0],point2[1] - point2[1])
     distance = 1
-    nw,nb = -1,0
+    nw1,nb,nw2 = 0,0,0
     while True:
         new_x = distance*np.cos(angle) + point1[1]
         new_y = distance*np.sin(angle) + point1[0]
