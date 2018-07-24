@@ -287,8 +287,85 @@ def join_blob_to_edge(source='button'):
 
 ###### Split a blob #######
 
-def split_blob(blob):
+def split_blob(part):
     pass
+    
+
+
+###### Add a most frequent occuring blob #######
+def add_most_frequent_blob(source='button'):
+    global globalLevels,img
+    exit_protect_mode()
+
+    for level in globalLevels[1]:
+        freq_cnt = {}
+        for i in range(len(level.children)):
+            for j in range(len(level.children)):
+                if i == j:
+                    continue
+                sim = cv2.matchShapes(level.children[i].contour,level.children[j].contour,1,0.0)
+                if sim < 0.0001:
+                    if i in freq_cnt:
+                        freq_cnt[i] += 1
+                    else:
+                        freq_cnt[i] = 1
+
+        print freq_cnt
+        sorted_freq = sorted(freq_cnt.items(), key = lambda x: x[1])
+        required_blob = level.children[sorted_freq[-1][0]]
+        print required_blob.contour.shape
+        required_blob_points = [point[0] for point in required_blob.contour]
+        bw = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        # empty_array = np.array(list(bw.shape),dtype = 'uint8')
+        # empty_array.fill(255)
+        # cv2.fillPoly(empty_array, pts =[required_blob.contour], color=(0,0,0))
+        extreme_left = tuple(required_blob.contour[required_blob.contour[:, :, 0].argmin()][0]) # extreme_left
+        extreme_right = tuple(required_blob.contour[required_blob.contour[:, :, 0].argmax()][0]) # extreme_right
+        extreme_top = tuple(required_blob.contour[required_blob.contour[:, :, 1].argmin()][0]) # extreme_top
+        extreme_bottom = tuple(required_blob.contour[required_blob.contour[:, :, 1].argmax()][0]) # extreme_bottom
+
+        extreme_left_part = tuple(level.contour[level.contour[:, :, 0].argmin()][0]) # extreme_left
+        extreme_right_part = tuple(level.contour[level.contour[:, :, 0].argmax()][0]) # extreme_right
+        extreme_top_part = tuple(level.contour[level.contour[:, :, 1].argmin()][0]) # extreme_top
+        extreme_bottom_part = tuple(level.contour[level.contour[:, :, 1].argmax()][0]) # extreme_bottom
+
+        right_limit = extreme_right_part[0] - (extreme_right[0] - extreme_left[0])    
+        left_limit = extreme_left_part[0]
+        top_limit = extreme_top_part[1]
+        bottom_limit = extreme_bottom_part[1] - (extreme_bottom[1] - extreme_top[1])
+        black_points_in_the_part = [point[0].tolist() for child in level.children for point in child.contour]
+
+        # empty_array = np.roll(empty_array,extreme_left_part[1] - extreme_left[1],axis = 1) # shift left
+        # empty_array = np.roll(empty_array,extreme_top_part[0] - extreme_top[0],axis = 0) # shift top
+        
+        required_blob_points = np.array(required_blob_points)
+        required_blob_points[:,0] += extreme_left_part[0] - extreme_left[0]
+        required_blob_points[:,1] += extreme_top_part[1] - extreme_top[1]
+
+
+        # required_blob_points = list(map(lambda x: (x[0] + extreme_top_part[0] - extreme_top[0]),required_blob_points))
+        # required_blob_points = list(map(lambda x: (x[1] + extreme_left_part[1] - extreme_left[1]),required_blob_points))
+        print right_limit - left_limit
+        print bottom_limit - top_limit
+        for i in range(right_limit - left_limit):
+            required_blob_points[:,0] += 1
+            for j in range(bottom_limit - top_limit):
+                print i,j
+                required_blob_points[:,1] += 1
+                print required_blob_points.tolist()
+                print black_points_in_the_part
+                filtered_points = list(filter(lambda x : x in black_points_in_the_part,required_blob_points.tolist()))
+                if len(filtered_points) == 0:
+                    # return required_blob_points
+                    print "Eureka!!! Found a point"
+                    cv2.fillPoly(img, pts =[np.expand_dims(np.asarray(required_blob_points),axis = 1)], color=(0,0,0))
+                    updateEncodings()
+                    break
+        break
+        # only take extreme points of the required blob instead of all the points
+
+        # @todo : placing of the detected frequent blob
+
 
 
 
@@ -348,7 +425,7 @@ def auto_fix_blobs_btn(source='button'):
     global addRemovePrefScale
     exit_protect_mode()
     prefVal = addRemovePrefScale.get()
-    prefVal = float(prefVal)/20.0
+    prefVal = float(prefVal) / 20.0
     auto_fix_blobs(prefVal)
     updateEncodings()
     logEvent(source + 'auto_fix_blobs')
@@ -546,8 +623,8 @@ def reduce_part(source='button'):
 def determine_adjacent(point1, point2):
     global img 
     bw  = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    slope = (point2[0] - point1[0]) / float(point2[1] - point2[1])
-    angle = np.arctan2(point2[0] - point1[0],point2[1] - point2[1])
+    slope = (point2[0] - point1[0]) / float(point2[1] - point1[1])
+    angle = np.arctan2(point2[0] - point1[0],point2[1] - point1[1])
     distance = 1
     nw,nb = -1,0
     while True:
@@ -2341,7 +2418,7 @@ if __name__ == "__main__":
     clearBtn.place(x=1405, y=240, width=50, height=50)
 
     ########## Rahul's code ###############
-    incBtn = Button(tkRoot, text="Inc", font=buttonTextFont, command=increase_blob)
+    incBtn = Button(tkRoot, text="Inc", font=buttonTextFont, command=add_most_frequent_blob)#increase_blob)
     incBtn.place(x=1285, y=300, width=50, height=50)
 
     decBtn = Button(tkRoot, text="Dec", font=buttonTextFont, command=join_blob_to_edge)
