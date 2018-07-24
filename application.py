@@ -664,14 +664,13 @@ def reduce_part(source='button'):
 def determine_adjacent(point1, point2):
     global img 
     bw  = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    slope = (point2[0] - point1[0]) / float(point2[1] - point1[1])
-    angle = np.arctan2(point2[0] - point1[0],point2[1] - point1[1])
+    angle = np.arctan2(point2[1] - point1[1],point2[0] - point1[0])
     distance = 1
     nw1,nb,nw2 = 0,0,0
     while True:
-        new_x = distance*np.cos(angle) + point1[1]
-        new_y = distance*np.sin(angle) + point1[0]
-        val = bw[int(np.round(new_x)),int(np.round(new_y))]
+        new_x = distance*np.cos(angle) + point1[0]
+        new_y = distance*np.sin(angle) + point1[1]
+        val = bw[int(np.round(new_y)),int(np.round(new_x))]
         if  val == 255:
             if nb == 0:
                 nw1 += 1
@@ -683,9 +682,12 @@ def determine_adjacent(point1, point2):
             else:
                 nb += 1
 
+        if int(np.round(new_x)) == point2[0] and int(np.round(new_y)) == point2[1]:
+            break
+
         distance += 1
 
-    if nw > -1 and nb > 0 and nw2 > -1:
+    if nw1 > -1 and nb > 0 and nw2 > -1:
         return True
     
     return False
