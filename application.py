@@ -135,26 +135,26 @@ def updateEncodings():
     if not usingThreading:
         updateEncodingsForReal()
 
-def satisfy_check(level,x,y):
+def satisfy_check(level,x,y,radius):
     global img
     for child in level.children:
-        if not out_contour(x ,y , child.contour):
+        if not out_contour(x ,y , child.contour,radius):
             print("Failed in satisfy_check")
             # cv2.circle(img,(x,y),1,(255,0,0),-1)
             return False
 
     return True
 
-def out_contour(x, y, contour):
+def out_contour(x, y, contour,radius,radius_multiplier=3):
     global drawRadius
-    ret = cv2.pointPolygonTest(contour, (x, y), True)
-    if ret > -(5*drawRadius):
+    ret = cv2.pointPolygonTest(contour, (y, x), True)
+    if ret > -(radius_multiplier*radius):
         return False
 
     return True
 
-def in_contour( x, y, contour, radius_multiplier=4):
-    ret = cv2.pointPolygonTest(contour, (x, y), True)
+def in_contour( x, y, contour,radius, radius_multiplier=3):
+    ret = cv2.pointPolygonTest(contour, (y, x), True)
     if ret < (radius_multiplier*drawRadius):
         # print("Failed in in_contour")
         return False
@@ -166,17 +166,17 @@ def add_blob(part):
     radius = 5
     colour = BLACK
 
-    extreme_top = tuple(part.contour[part.contour[:, :, 0].argmin()][0])
-    extreme_bottom = tuple(part.contour[part.contour[:, :, 0].argmax()][0])
-    extreme_left = tuple(part.contour[part.contour[:, :, 1].argmin()][0])
-    extreme_right = tuple(part.contour[part.contour[:, :, 1].argmax()][0])
+    extreme_left = tuple(part.contour[part.contour[:, :, 0].argmin()][0]) # extreme_left
+    extreme_right = tuple(part.contour[part.contour[:, :, 0].argmax()][0]) # extreme_right
+    extreme_top = tuple(part.contour[part.contour[:, :, 1].argmin()][0]) # extreme_top
+    extreme_bottom = tuple(part.contour[part.contour[:, :, 1].argmax()][0]) # extreme_bottom
     print(extreme_top,extreme_bottom,extreme_left,extreme_right)
-    # cv2.circle(img,extreme_left,1,(0,0,255),-1)
+    # cv2.circle(img,extreme_left,1,(255,0,0),-1)
     # cv2.circle(img,extreme_right,1,(0,0,255),-1)
-    # cv2.circle(img,extreme_top,1,(0,0,255),-1)
-    # cv2.circle(img,extreme_bottom,1,(0,0,255),-1)
-    range_in_x = (extreme_top[0],extreme_bottom[0])
-    range_in_y = (extreme_left[1],extreme_right[1])
+    # cv2.circle(img,extreme_top,1,(0,255,0),-1)
+    # cv2.circle(img,extreme_bottom,1,(255,0,255),-1)
+    range_in_x = (extreme_top[1],extreme_bottom[1])
+    range_in_y = (extreme_left[0],extreme_right[0])
     count = 0
     max_count = 100
 
@@ -184,10 +184,10 @@ def add_blob(part):
         sampled_x = int(np.random.uniform(range_in_x[0],range_in_x[1],1))
         sampled_y = int(np.random.uniform(range_in_y[0],range_in_y[1],1))
 
-        if satisfy_check(part,sampled_x,sampled_y) and in_contour(sampled_x,sampled_y,part.contour):
+        if satisfy_check(part,sampled_x,sampled_y,radius) and in_contour(sampled_x,sampled_y,part.contour,radius):
             print("Drawing on %d %d" % (sampled_x,sampled_y))
-            cv2.circle(img, (sampled_x, sampled_y), radius, colour, -1)
-            # updateEncodings()
+            cv2.circle(img, (sampled_y, sampled_x), radius, colour, -1)
+            updateEncodings()
             break
         count += 1
         print(sampled_x,sampled_y,"No")
@@ -327,10 +327,13 @@ def auto_fix_blobs(prefVal=0.0):
     set_target_dividers(fixed_target[2])
 
     for i in range(len(sorted_parts)):
+        sorted_parts = sortParts(mainRoot, 'area')
         sorted_parts[i].children = sortBlobs(sorted_parts[i], 'area')
         counter = 0
         max_count = 100
         while img_part_vals[i] != target_part_vals[i] and counter < max_count:
+            sorted_parts = sortParts(mainRoot, 'area')
+            sorted_parts[i].children = sortBlobs(sorted_parts[i], 'area')
             if img_part_vals[i] < target_part_vals[i]:
                 add_blob(sorted_parts[i])
                 img_part_vals[i] += 1
