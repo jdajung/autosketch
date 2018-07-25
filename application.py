@@ -581,71 +581,86 @@ def choose_contour_points(contour):
             selected.append(item[0])
     return selected
 
+def dot_prod(vec1, vec2):
+    sum = 0
+    for i in range(len(vec1)):
+        sum += vec1[i]*vec2[i]
+    return sum
+
+def closest_pt_on_segment(pt, seg_pt1, seg_pt2):
+    if seg_pt1 == seg_pt2:
+        print "ERROR: Cannot define a line segment from one point"
+        return None
+    u = (seg_pt1[0]-pt[0],seg_pt1[1]-pt[1])
+    v = (seg_pt2[0]-seg_pt1[0],seg_pt2[1]-seg_pt1[1])
+    t = -float(dot_prod(v,u))/(dot_prod(v,v))
+    if t >= 0 and t <= 1:
+        closest_x = int(round(((1-t)*seg_pt1[0]+t*seg_pt2[0])))
+        closest_y = int(round(((1-t)*seg_pt1[1]+t*seg_pt2[1])))
+        closest = (closest_x, closest_y)
+        dist_vec = (closest[0]-pt[0],closest[1]-pt[1])
+        dist_sqr = dist_vec[0]**2 + dist_vec[1]**2
+        return (dist_sqr, closest)
+    else:
+        return min((square_dist(pt,seg_pt1),seg_pt1), (square_dist(pt,seg_pt2),seg_pt2))
+
 
 def closest_point_pairs():
     global mainRoot, markedImg
+    max_cut_dist = 20
     if mainRoot is None or len(mainRoot.children) <= 1:
         return
     min_list = []
     #check pairs of parts
     for i in range(len(mainRoot.children)):
         part1 = mainRoot.children[i]
-        for j in range(i+1,len(mainRoot.children)):
-            part2 = mainRoot.children[j]
+        for j in range(i+1,len(mainRoot.children)+1):
+            if j == len(mainRoot.children):
+                part2 = mainRoot
+            else:
+                part2 = mainRoot.children[j]
             if bounding_box_check(part1,part2):
-                if part1.select_points is None:
-                    part1.select_points = choose_contour_points(part1.contour)
-                if part2.select_points is None:
-                    part2.select_points = choose_contour_points(part2.contour)
+                # if part1.select_points is None:
+                #     part1.select_points = choose_contour_points(part1.contour)
+                # if part2.select_points is None:
+                #     part2.select_points = choose_contour_points(part2.contour)
                 min_tuple = None
 
-                # cv2.line(markedImg,part1.centroid,part2.centroid,(0,0,255),2)
-                # for point in part1.contour:
-                #     cv2.circle(markedImg, tuple(point[0]), 4, (0,255,0), -1)
-                # for point in part1.select_points:
-                #     cv2.circle(markedImg, tuple(point), 2, (255,0,0), -1)
-
-                for p1_point in part1.select_points:
-                    forward_i = 0
-                    backward_i = -1
-                    last_dist = None
-                    num_p2_points = len(part2.select_points)
-
-                    while forward_i < num_p2_points:
-                        p2_point = part2.select_points[forward_i]
+                for p1_index in range(len(part1.approx)):
+                    p1_point = part1.approx[p1_index][0]
+                    for p2_index in range(len(part2.approx)):
+                        p2_point = part2.approx[p2_index][0]
                         curr_dist = square_dist(p1_point,p2_point)
-                        if last_dist is None or curr_dist <= last_dist:
-                            last_dist = curr_dist
-                            if determine_adjacent(p1_point,p2_point):
-                                min_tuple = (curr_dist, p1_point, p2_point)
-                            forward_i += 1
-                        else:
-                            break
-                    last_dist = None
-                    while (backward_i+num_p2_points) > forward_i:
-                        p2_point = part2.select_points[backward_i]
-                        curr_dist = square_dist(p1_point,p2_point)
-                        if last_dist is None or curr_dist <= last_dist:
-                            if (min_tuple is None or curr_dist <= min_tuple[0]) and determine_adjacent(p1_point,p2_point):
-                                min_tuple = (curr_dist, p1_point, p2_point)
-                            last_dist = curr_dist
-                            backward_i -= 1
-                        else:
-                            break
+                        if (min_tuple is None or curr_dist <= min_tuple[0]): # and determine_adjacent(p1_point,p2_point):
+                            min_tuple = (curr_dist, p1_point, p2_point, p1_index, p2_index)
 
                 if min_tuple is not None:
-                    min_list.append((min_tuple[0],tuple(min_tuple[1]),tuple(min_tuple[2]),part1.cNum,part2.cNum))
+                    p1_mid = tuple(part1.approx[min_tuple[3]][0])
+                    p1_1 = tuple(part1.approx[min_tuple[3]-1][0])
+                    p1_2 = tuple(part1.approx[(min_tuple[3]+1)%len(part1.approx)][0])
+                    p2_mid = tuple(part2.approx[min_tuple[4]][0])
+                    p2_1 = tuple(part2.approx[min_tuple[4]-1][0])
+                    p2_2 = tuple(part2.approx[(min_tuple[4]+1)%len(part2.approx)][0])
+                    candidates = [[None,p1_mid,p2_1,p2_mid], [None,p1_mid,p2_2,p2_mid],
+                                  [None,p1_1,p2_1,p2_mid], [None,p1_1,p2_2,p2_mid],
+                                  [None,p1_2,p2_1,p2_mid], [None,p1_2,p2_2,p2_mid],
+                                  [None,p2_mid,p1_1,p1_mid], [None,p2_mid,p1_2,p1_mid],
+                                  [None,p2_1,p1_1,p1_mid], [None,p2_1,p1_2,p1_mid],
+                                  [None,p2_2,p1_1,p1_mid], [None,p2_2,p1_2,p1_mid]]
+                    for curr in candidates:
+                        curr[0] = closest_pt_on_segment(curr[1],curr[2],curr[3])
+                    closest = min(candidates)
+                    if determine_adjacent(closest[0][1],closest[1]) and closest[0][0]<=max_cut_dist**2:
+                        min_list.append((closest[0][0],closest[0][1],closest[1],part1.cNum,part2.cNum))
 
-    for item in min_list:
-        cv2.line(markedImg,item[1],item[2],(0,0,255),2)
-    updateGuiImage()
+    # for item in min_list:
+    #     cv2.line(markedImg,item[1],item[2],(0,0,255),2)
+    # for part in mainRoot.children:
+    #     for point in part.approx:
+    #         cv2.circle(markedImg, tuple(point[0]), 3, (255,0,0), -1)
+    # updateGuiImage()
     return min_list
 
-                
-
-    # updateGuiImage()
-
-    #check parts to root
 
 def reduce_part(source='button'):
     global undoStack, undoIndex, img, globalLevels
