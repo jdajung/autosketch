@@ -1,4 +1,5 @@
 import math
+import sys
 from conversions import *
 
 #finds the absolute difference between values in the same position of 2 lists
@@ -101,7 +102,7 @@ def find_divisions(part_vals, bitstring, cost_fun, multipliers=None):
     if ans:
         return min(ans)
     else:
-        return None
+        return (sys.maxint, None, None)
 
 
 if __name__ == '__main__':

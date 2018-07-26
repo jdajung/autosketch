@@ -14,6 +14,7 @@ import tkFont
 import threading
 import mutex
 import itertools
+import heapq
 
 from Tkinter import *
 from PIL import Image
@@ -24,6 +25,7 @@ from detector import *
 from drawing import *
 from random import randint
 from part_division import *
+from collections import deque
 
 #global constants
 BASE_PATH = os.getcwd()
@@ -36,6 +38,7 @@ BLACK = (0,0,0)
 GREY = (100,100,100) #unused in parent version
 WHITE = (255,255,255)
 LIGHT_YELLOW = (153,255,255)
+PART_CUT_WIDTH = 3
 
 #global variables
 targetBinString = '11001101'#'1110010110110011001110101101101111' #Put your target encoding here!
@@ -155,8 +158,8 @@ def out_contour(x, y, contour,radius,radius_multiplier=3):
     return True
 
 def in_contour( x, y, contour,radius, radius_multiplier=3):
-    ret = cv2.pointPolygonTest(contour, (y, x), True)
-    if ret < (radius_multiplier*drawRadius):
+    ret = cv2.pointPolygonTest(contour, (x, y), True)
+    if ret < (radius_multiplier*radius):
         # print("Failed in in_contour")
         return False
 
@@ -185,7 +188,7 @@ def add_blob(part):
         sampled_x = int(np.random.uniform(range_in_x[0],range_in_x[1],1))
         sampled_y = int(np.random.uniform(range_in_y[0],range_in_y[1],1))
 
-        if satisfy_check(part,sampled_x,sampled_y,radius) and in_contour(sampled_x,sampled_y,part.contour,radius):
+        if satisfy_check(part,sampled_x,sampled_y,radius) and in_contour(sampled_y,sampled_x,part.contour,radius):
             print("Drawing on %d %d" % (sampled_x,sampled_y))
             cv2.circle(img, (sampled_y, sampled_x), radius, colour, -1)
             updateEncodings()
@@ -587,10 +590,24 @@ def set_target_dividers(posn_list):
     for posn in posn_list:
         targetDividers = targetDividers[:posn] + '|' + targetDividers[posn+1:]
 
-def auto_fix_blobs(prefVal=0.0):
-    global mainRoot, targetBinString, targetDividers
+def cost_params():
+    global mainRoot, addRemovePrefScale
     cost_base = 10
     protected_multiplier = 100
+    sorted_parts = sortParts(mainRoot, 'area')
+    multipliers = []
+    for part in sorted_parts:
+        if part.protected:
+            multipliers.append(protected_multiplier)
+        else:
+            multipliers.append(1)
+    prefVal = addRemovePrefScale.get()
+    prefVal = float(prefVal) / 20.0
+    return (cost_base, multipliers, prefVal)
+
+
+def auto_fix_blobs(prefVal=0.0):
+    global mainRoot, targetBinString, targetDividers
 
     if mainRoot is None or not mainRoot.children:
         print "Cannot fix blobs; No parts found"
@@ -598,15 +615,14 @@ def auto_fix_blobs(prefVal=0.0):
 
     img_part_vals = []
     sorted_parts = sortParts(mainRoot, 'area')
-    multipliers = []
     for part in sorted_parts:
         img_part_vals.append(part.encoding)
-        if part.protected:
-            multipliers.append(protected_multiplier)
-        else:
-            multipliers.append(1)
+    cost_base, multipliers, _ = cost_params()
 
     fixed_target = find_divisions(img_part_vals,targetBinString,exp_weight_cost_fun(cost_base, prefVal),multipliers)
+    if fixed_target is None or fixed_target[1] is None:
+        print "ERROR: Unable to find valid dividers"
+        return
     target_part_vals = fixed_target[1]
     set_target_dividers(fixed_target[2])
 
@@ -627,6 +643,7 @@ def auto_fix_blobs(prefVal=0.0):
         if counter >= max_count:
             print "ERROR: Fix blobs failed with too many attempts"
     updateEncodings()
+    updateVisualTargetPanel()
 
 def auto_fix_blobs_btn(source='button'):
     global addRemovePrefScale
@@ -812,11 +829,39 @@ def closest_pt_on_segment(pt, seg_pt1, seg_pt2):
         return min((square_dist(pt,seg_pt1),seg_pt1), (square_dist(pt,seg_pt2),seg_pt2))
 
 
+#extend the line segment ending at pt1
+def extend_line(pt1,pt2,extend_dist):
+    if pt1[0]-pt2[0] == 0:
+        slope = np.sign(pt1[1]-pt2[1])*100000.0
+    else:
+        slope = float(pt1[1]-pt2[1])/(pt1[0]-pt2[0])
+    factor = math.sqrt(float(extend_dist**2)/(slope**2 + 1))
+    out_point = [None,None]
+    if pt1[0] - pt2[0] >= 0:
+        out_point[0] = int(round(pt1[0] + factor))
+    else:
+        out_point[0] = int(round(pt1[0] - factor))
+    if pt1[1] - pt2[1] >= 0:
+        out_point[1] = int(round(pt1[1] + factor*abs(slope)))
+    else:
+        out_point[1] = int(round(pt1[1] - factor*abs(slope)))
+    if out_point[0] < 0:
+        out_point[0] = 0
+    if out_point[1] < 0:
+        out_point[1] = 0
+    if out_point[0] > CANVAS_WIDTH-1:
+        out_point[0] = CANVAS_WIDTH-1
+    if out_point[1] > CANVAS_HEIGHT-1:
+        out_point[1] = CANVAS_HEIGHT-1
+    return tuple(out_point)
+
+
 def closest_point_pairs():
     global mainRoot, markedImg
-    max_cut_dist = 20
+    max_cut_dist = 30
+    root_extra_dist = 5
     if mainRoot is None or len(mainRoot.children) <= 1:
-        return
+        return []
     min_list = []
     #check pairs of parts
     for i in range(len(mainRoot.children)):
@@ -824,8 +869,10 @@ def closest_point_pairs():
         for j in range(i+1,len(mainRoot.children)+1):
             if j == len(mainRoot.children):
                 part2 = mainRoot
+                using_root = True
             else:
                 part2 = mainRoot.children[j]
+                using_root = False
             if bounding_box_check(part1,part2):
                 # if part1.select_points is None:
                 #     part1.select_points = choose_contour_points(part1.contour)
@@ -858,7 +905,11 @@ def closest_point_pairs():
                         curr[0] = closest_pt_on_segment(curr[1],curr[2],curr[3])
                     closest = min(candidates)
                     if determine_adjacent(closest[0][1],closest[1]) and closest[0][0]<=max_cut_dist**2:
-                        min_list.append((closest[0][0],closest[0][1],closest[1],part1.cNum,part2.cNum))
+                        if not using_root:
+                            min_list.append((closest[0][0],closest[0][1],closest[1],part1.cNum,part2.cNum))
+                        else:
+                            root_point = extend_line(closest[0][1],closest[1],root_extra_dist)
+                            min_list.append((closest[0][0],root_point,closest[1],part1.cNum,part2.cNum))
 
     # for item in min_list:
     #     cv2.line(markedImg,item[1],item[2],(0,0,255),2)
@@ -869,9 +920,170 @@ def closest_point_pairs():
     return min_list
 
 
+def est_cut_area(pt1,pt2,width):
+    return int(round(math.sqrt(square_dist(pt1,pt2))*width))
+
+
+def bfs_part_reduction(depth):
+    global targetBinString, mainRoot
+    if mainRoot is None or len(mainRoot.children)<=0:
+        return []
+    ambig_factor = 1.0
+    sorted_parts = sortParts(mainRoot, 'area')
+    cost_base, multipliers, prefVal = cost_params()
+    possible_cuts = closest_point_pairs()
+    part_info = []
+    for i in range(len(sorted_parts)):
+        part = sorted_parts[i]
+        part_info.append([part.area,part.encoding,[part.cNum],multipliers[i]])
+    initial_div = find_divisions([i[1] for i in part_info],targetBinString,exp_weight_cost_fun(cost_base, prefVal),multipliers)
+    cuts_tried = {}
+    cuts_used = []
+    cuts_tried[tuple(cuts_used)] = (initial_div[0],part_info)
+    #root_state = (initial_div[0],part_info,[],0)
+    best_state = cuts_used
+    q = deque([cuts_used])
+
+    while q:
+        curr_cuts = q.popleft()
+        curr_info = cuts_tried[tuple(curr_cuts)][1]
+        if len(curr_cuts) > depth:
+            break
+        else:
+            for i in range(len(possible_cuts)):
+                new_cuts = curr_cuts[:] + [i]
+                new_cuts.sort()
+                if tuple(new_cuts) not in cuts_tried:
+                    new_info = []
+                    part_cut_1 = possible_cuts[i][3]
+                    part_cut_2 = possible_cuts[i][4]
+                    found_part = None
+                    cut_area = 0
+                    for curr_entry in curr_info:
+                        if part_cut_1 not in curr_entry[2] and part_cut_2 not in curr_entry[2]:
+                            new_info.append([curr_entry[0],curr_entry[1],curr_entry[2][:],curr_entry[3]])
+                        elif found_part is None:
+                            found_part = curr_entry
+                        else:
+                            cut_area = est_cut_area(possible_cuts[i][1],possible_cuts[i][2],PART_CUT_WIDTH)
+                            new_info.append([curr_entry[0]+found_part[0]+cut_area,
+                                             curr_entry[1]+found_part[1],
+                                             curr_entry[2]+found_part[2],
+                                             max(curr_entry[3],found_part[3])])
+                    new_info.sort()
+                    ambiguous = False
+                    for i in range(len(new_info)):
+                        entry = new_info[i]
+                        if part_cut_1 in entry[2]:
+                            if i>=1 and abs(new_info[i-1][0] - entry[0]) < cut_area*ambig_factor:
+                                ambiguous = True
+                            if i<len(new_info)-1 and abs(new_info[i+1][0] - entry[0]) < cut_area*ambig_factor:
+                                ambiguous = True
+                    if ambiguous:
+                        cuts_tried[tuple(new_cuts)] = (None,new_info)
+                    else:
+                        new_div = find_divisions([i[1] for i in new_info],targetBinString, \
+                                                 exp_weight_cost_fun(cost_base, prefVal),[i[3] for i in new_info])
+                        if new_div is None:
+                            cuts_tried[tuple(new_cuts)] = (None,new_info)
+                        else:
+                            cuts_tried[tuple(new_cuts)] = (new_div[0],new_info)
+                            if new_div[0] < cuts_tried[tuple(best_state)][0]:
+                                best_state = new_cuts
+                            q.append(new_cuts)
+    final_cuts = []
+    for index in best_state:
+        final_cuts.append(possible_cuts[index])
+    return final_cuts
+
+
+def bestfs_part_reduction(max_nodes):
+    global targetBinString, mainRoot
+    if mainRoot is None or len(mainRoot.children)<=0:
+        return []
+    ambig_factor = 1.0
+    sorted_parts = sortParts(mainRoot, 'area')
+    cost_base, multipliers, prefVal = cost_params()
+    possible_cuts = closest_point_pairs()
+    part_info = []
+    for i in range(len(sorted_parts)):
+        part = sorted_parts[i]
+        part_info.append([part.area,part.encoding,[part.cNum],multipliers[i]])
+    initial_div = find_divisions([i[1] for i in part_info],targetBinString,exp_weight_cost_fun(cost_base, prefVal),multipliers)
+    cuts_tried = {}
+    cuts_used = []
+    cuts_tried[tuple(cuts_used)] = (initial_div[0],part_info)
+    #root_state = (initial_div[0],part_info,[],0)
+    best_state = cuts_used
+    num_nodes = 0
+    q = [cuts_used]
+    heapq.heapify(q)
+
+    while q:
+        curr_cuts = heapq.heappop(q)
+        curr_info = cuts_tried[tuple(curr_cuts)][1]
+        if num_nodes > max_nodes:
+            break
+        else:
+            for i in range(len(possible_cuts)):
+                new_cuts = curr_cuts[:] + [i]
+                new_cuts.sort()
+                if tuple(new_cuts) not in cuts_tried:
+                    new_info = []
+                    part_cut_1 = possible_cuts[i][3]
+                    part_cut_2 = possible_cuts[i][4]
+                    found_part = None
+                    cut_area = 0
+                    for curr_entry in curr_info:
+                        if part_cut_1 not in curr_entry[2] and part_cut_2 not in curr_entry[2]:
+                            new_info.append([curr_entry[0],curr_entry[1],curr_entry[2][:],curr_entry[3]])
+                        elif found_part is None:
+                            found_part = curr_entry
+                        else:
+                            cut_area = est_cut_area(possible_cuts[i][1],possible_cuts[i][2],PART_CUT_WIDTH)
+                            new_info.append([curr_entry[0]+found_part[0]+cut_area,
+                                             curr_entry[1]+found_part[1],
+                                             curr_entry[2]+found_part[2],
+                                             max(curr_entry[3],found_part[3])])
+                    new_info.sort()
+                    ambiguous = False
+                    for i in range(len(new_info)):
+                        entry = new_info[i]
+                        if part_cut_1 in entry[2]:
+                            if i>=1 and abs(new_info[i-1][0] - entry[0]) < cut_area*ambig_factor:
+                                ambiguous = True
+                            if i<len(new_info)-1 and abs(new_info[i+1][0] - entry[0]) < cut_area*ambig_factor:
+                                ambiguous = True
+                    if ambiguous:
+                        cuts_tried[tuple(new_cuts)] = (None,new_info)
+                    else:
+                        new_div = find_divisions([i[1] for i in new_info],targetBinString, \
+                                                 exp_weight_cost_fun(cost_base, prefVal),[i[3] for i in new_info])
+                        if new_div is None:
+                            cuts_tried[tuple(new_cuts)] = (None,new_info)
+                        else:
+                            cuts_tried[tuple(new_cuts)] = (new_div[0],new_info)
+                            if new_div[0] < cuts_tried[tuple(best_state)][0]:
+                                best_state = new_cuts
+                            heapq.heappush(q,new_cuts)
+            num_nodes += 1
+    final_cuts = []
+    for index in best_state:
+        final_cuts.append(possible_cuts[index])
+    return final_cuts
+
+
+def perform_best_part_cuts():
+    global img
+    best_cuts = bestfs_part_reduction(100)
+    for cut in best_cuts:
+        cv2.line(img,cut[1],cut[2],WHITE,PART_CUT_WIDTH)
+    updateEncodings()
+
+
 def reduce_part(source='button'):
     global undoStack, undoIndex, img, globalLevels
-    closest_point_pairs()
+    perform_best_part_cuts()
     exit_protect_mode()
     # for level in globalLevels[1]:
     #     cut_part(level)
@@ -2470,7 +2682,6 @@ class UpdateThread (threading.Thread):
 #print an error if the encoding is invalid
 def checkCommandLineEncoding():
     global targetBinString
-
     if len(sys.argv) == 1:
         pass
     elif len(sys.argv) == 2:
