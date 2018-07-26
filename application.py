@@ -738,9 +738,37 @@ def closest_pt_on_segment(pt, seg_pt1, seg_pt2):
         return min((square_dist(pt,seg_pt1),seg_pt1), (square_dist(pt,seg_pt2),seg_pt2))
 
 
+#extend the line segment ending at pt1
+def extend_line(pt1,pt2,extend_dist):
+    if pt1[0]-pt2[0] == 0:
+        slope = np.sign(pt1[1]-pt2[1])*100000.0
+    else:
+        slope = float(pt1[1]-pt2[1])/(pt1[0]-pt2[0])
+    factor = math.sqrt(float(extend_dist**2)/(slope**2 + 1))
+    out_point = [None,None]
+    if pt1[0] - pt2[0] >= 0:
+        out_point[0] = int(round(pt1[0] + factor))
+    else:
+        out_point[0] = int(round(pt1[0] - factor))
+    if pt1[1] - pt2[1] >= 0:
+        out_point[1] = int(round(pt1[1] + factor*abs(slope)))
+    else:
+        out_point[1] = int(round(pt1[1] - factor*abs(slope)))
+    if out_point[0] < 0:
+        out_point[0] = 0
+    if out_point[1] < 0:
+        out_point[1] = 0
+    if out_point[0] > CANVAS_WIDTH-1:
+        out_point[0] = CANVAS_WIDTH-1
+    if out_point[1] > CANVAS_HEIGHT-1:
+        out_point[1] = CANVAS_HEIGHT-1
+    return tuple(out_point)
+
+
 def closest_point_pairs():
     global mainRoot, markedImg
-    max_cut_dist = 20
+    max_cut_dist = 30
+    root_extra_dist = 5
     if mainRoot is None or len(mainRoot.children) <= 1:
         return
     min_list = []
@@ -750,8 +778,10 @@ def closest_point_pairs():
         for j in range(i+1,len(mainRoot.children)+1):
             if j == len(mainRoot.children):
                 part2 = mainRoot
+                using_root = True
             else:
                 part2 = mainRoot.children[j]
+                using_root = False
             if bounding_box_check(part1,part2):
                 # if part1.select_points is None:
                 #     part1.select_points = choose_contour_points(part1.contour)
@@ -784,7 +814,11 @@ def closest_point_pairs():
                         curr[0] = closest_pt_on_segment(curr[1],curr[2],curr[3])
                     closest = min(candidates)
                     if determine_adjacent(closest[0][1],closest[1]) and closest[0][0]<=max_cut_dist**2:
-                        min_list.append((closest[0][0],closest[0][1],closest[1],part1.cNum,part2.cNum))
+                        if not using_root:
+                            min_list.append((closest[0][0],closest[0][1],closest[1],part1.cNum,part2.cNum))
+                        else:
+                            root_point = extend_line(closest[0][1],closest[1],root_extra_dist)
+                            min_list.append((closest[0][0],root_point,closest[1],part1.cNum,part2.cNum))
 
     # for item in min_list:
     #     cv2.line(markedImg,item[1],item[2],(0,0,255),2)
@@ -2481,7 +2515,6 @@ class UpdateThread (threading.Thread):
 #print an error if the encoding is invalid
 def checkCommandLineEncoding():
     global targetBinString
-
     if len(sys.argv) == 1:
         pass
     elif len(sys.argv) == 2:
