@@ -322,53 +322,65 @@ def check_if_all_points_are_at_certain_distance_from_all_the_blobs(points,level,
 
 def draw_most_frequent_if_possible(required_blob_points,black_points_in_the_part,level,right_limit,left_limit,bottom_limit,top_limit,required_blob_image):
     global globalLevels,img
+    mode = 'random'
+    if mode == 'random':
+        while True:
+            sampled_x_displacement = int(np.random.uniform(0,right_limit-left_limit,1))
+            sampled_y_displacement = int(np.random.uniform(0,bottom_limit-top_limit,1))
+            new_points_for_blob = required_blob_points.copy()
+            new_points_for_blob[:,0] += sampled_x_displacement
+            new_points_for_blob[:,1]  += sampled_y_displacement
+            new_image_for_blob = required_blob_image.copy()
+            new_image_for_blob = np.roll(new_image_for_blob,sampled_x_displacement,axis = 1)
+            new_image_for_blob = np.roll(new_image_for_blob,sampled_y_displacement,axis = 0)
 
-    print level.last_search_point
-    for i in range(0,right_limit - left_limit,4):
-        new_points_for_blob_2 = required_blob_points.copy()
-        new_points_for_blob_2[:,0] += i
-        new_image_for_blob_2 = required_blob_image.copy()
-        new_image_for_blob_2 = np.roll(new_image_for_blob_2,i,axis = 1)
-        for j in range(0,bottom_limit - top_limit,4):
-            if i < level.last_search_point[0] and j < level.last_search_point[1]:
-                continue 
-            new_points_for_blob = new_points_for_blob_2.copy()
-            new_points_for_blob[:,1]  += j
-            new_image_for_blob = new_image_for_blob_2.copy()
-            new_image_for_blob = np.roll(new_image_for_blob,j,axis = 0)
             extreme_left = tuple(new_points_for_blob[new_points_for_blob[:, 0].argmin()]) # extreme_left
             extreme_right = tuple(new_points_for_blob[new_points_for_blob[:, 0].argmax()]) # extreme_right
             extreme_top = tuple(new_points_for_blob[new_points_for_blob[:,  1].argmin()]) # extreme_top
             extreme_bottom = tuple(new_points_for_blob[new_points_for_blob[:, 1].argmax()]) # extreme_bottom
 
-            # cv2.circle(img,extreme_top,1,(0,255,0),-1)
-            # updateEncodings()
-
-            # print left_limit + i , top_limit + j
             if check_if_blob_inside(*extreme_left,part_contour=level.contour) and check_if_blob_inside(*extreme_right,part_contour=level.contour) \
                 and check_if_blob_inside(*extreme_top,part_contour=level.contour) and check_if_blob_inside(*extreme_bottom,part_contour=level.contour):
 
-                # time.sleep(10)
-                # cv2.circle(img,extreme_top,1,(0,255,0),-1)
-                # cv2.circle(img,extreme_bottom,1,(255,0,255),-1)
                 filtered_points = list(filter(lambda x : x in black_points_in_the_part,new_points_for_blob.tolist()))
                 if len(filtered_points) == 0:
-                    # return required_blob_points
                     if check_if_all_points_are_at_certain_distance_from_all_the_blobs(new_points_for_blob.tolist(),level):
                         print "Eureka!!! Found a point"
-                        # print left_limit + i, top_limit + i
-                        # cv2.fillPoly(img, pts =[np.expand_dims(np.asarray(new_points_for_blob),axis = 1)], color=(0,0,0))
-                        # mask = cv2.bitwise_not(new_image_for_blob)
-                        _,mask = cv2.threshold(cv2.cvtColor(new_image_for_blob,cv2.COLOR_BGR2GRAY),10,255,cv2.THRESH_BINARY)
-                        mask_inv = cv2.bitwise_not(mask)
-                        img_bg = cv2.bitwise_and(img,img,mask = mask_inv)
-                        mask_fg = cv2.bitwise_and(new_image_for_blob,new_image_for_blob,mask = mask)
-                        img = cv2.add(img_bg,mask_fg)
-                        img = new_image_for_blob
-                        # img = img + new_image_for_blob
-                        level.last_search_point = (i,j)
+                        img[new_image_for_blob < 10] = 0
+                        # level.last_search_point = (i,j)
                         updateEncodings()
                         return
+
+    else:
+        for i in range(0,right_limit - left_limit,4):
+            new_points_for_blob_2 = required_blob_points.copy()
+            new_points_for_blob_2[:,0] += i
+            new_image_for_blob_2 = required_blob_image.copy()
+            new_image_for_blob_2 = np.roll(new_image_for_blob_2,i,axis = 1)
+            for j in range(0,bottom_limit - top_limit,4):
+                # if i < level.last_search_point[0] and j < level.last_search_point[1]:
+                #     continue 
+                new_points_for_blob = new_points_for_blob_2.copy()
+                new_points_for_blob[:,1]  += j
+                new_image_for_blob = new_image_for_blob_2.copy()
+                new_image_for_blob = np.roll(new_image_for_blob,j,axis = 0)
+                extreme_left = tuple(new_points_for_blob[new_points_for_blob[:, 0].argmin()]) # extreme_left
+                extreme_right = tuple(new_points_for_blob[new_points_for_blob[:, 0].argmax()]) # extreme_right
+                extreme_top = tuple(new_points_for_blob[new_points_for_blob[:,  1].argmin()]) # extreme_top
+                extreme_bottom = tuple(new_points_for_blob[new_points_for_blob[:, 1].argmax()]) # extreme_bottom
+
+                # print left_limit + i , top_limit + j
+                if check_if_blob_inside(*extreme_left,part_contour=level.contour) and check_if_blob_inside(*extreme_right,part_contour=level.contour) \
+                    and check_if_blob_inside(*extreme_top,part_contour=level.contour) and check_if_blob_inside(*extreme_bottom,part_contour=level.contour):
+
+                    filtered_points = list(filter(lambda x : x in black_points_in_the_part,new_points_for_blob.tolist()))
+                    if len(filtered_points) == 0:
+                        if check_if_all_points_are_at_certain_distance_from_all_the_blobs(new_points_for_blob.tolist(),level):
+                            print "Eureka!!! Found a point"
+                            img[new_image_for_blob < 10] = 0
+                            # level.last_search_point = (i,j)
+                            updateEncodings()
+                            return
 
 
 def add_most_frequent_blob(source='button'):
@@ -429,25 +441,6 @@ def add_most_frequent_blob(source='button'):
                         freq_cnt[i] += 1
                     else:
                         freq_cnt[i] = 1                    
-                # print len(loc)
-                # print loc
-                # for pt in zip(*loc[::-1]):
-                #     cv2.rectangle(img, pt, (pt[0] + w, pt[1] + h), (0,0,255), 2)
-                #     font = cv2.FONT_HERSHEY_SIMPLEX
-                #     print i,j
-                #     cv2.putText(img,str(i),(pt), font, 1,(0,0,0),1,cv2.LINE_AA)
-
-            # return
-            # for j in range(len(level.children)):
-            #     if i == j:
-            #         continue
-            #     # sim = cv2.matchShapes(level.children[i].approx,level.children[j].approx,1,0)
-            #     # print sim
-            #     if sim < 0.05:
-            #         if i in freq_cnt:
-            #             freq_cnt[i] += 1
-            #         else:
-            #             freq_cnt[i] = 1
         print freq_cnt
 
         if len(freq_cnt) == 0:
@@ -459,9 +452,6 @@ def add_most_frequent_blob(source='button'):
         # print required_blob.contour.shape
         required_blob_points = [point[0] for point in required_blob.contour]
         bw = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        # empty_array = np.array(list(bw.shape),dtype = 'uint8')
-        # empty_array.fill(255)
-        # cv2.fillPoly(empty_array, pts =[required_blob.contour], color=(0,0,0))
         extreme_left = tuple(required_blob.contour[required_blob.contour[:, :, 0].argmin()][0]) # extreme_left
         extreme_right = tuple(required_blob.contour[required_blob.contour[:, :, 0].argmax()][0]) # extreme_right
         extreme_top = tuple(required_blob.contour[required_blob.contour[:, :, 1].argmin()][0]) # extreme_top
@@ -477,9 +467,6 @@ def add_most_frequent_blob(source='button'):
         top_limit = extreme_top_part[1]
         bottom_limit = extreme_bottom_part[1] - (extreme_bottom[1] - extreme_top[1])
         black_points_in_the_part = [point[0].tolist() for child in level.children for point in child.contour]
-
-        # empty_array = np.roll(empty_array,extreme_left_part[1] - extreme_left[1],axis = 1) # shift left
-        # empty_array = np.roll(empty_array,extreme_top_part[0] - extreme_top[0],axis = 0) # shift top
         
         required_blob_points = np.array(required_blob_points)
         required_blob_points[:,0] += extreme_left_part[0] - extreme_left[0]
