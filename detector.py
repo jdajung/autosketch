@@ -11,7 +11,7 @@ from helpers import imshow
 from conversions import *
 
 CONTOUR_AREA_THRESHOLD = 10
-APPROX_POLY_FACTOR = 0.025
+APPROX_POLY_FACTOR = 0.002#0.025
 CLOSER_PIXELS = 1  # number of pixels away from contour boundary to check for colour
 BITS_PER_BLOB = 2
 WHITE_ABOVE = 120  # 120
