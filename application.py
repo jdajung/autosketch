@@ -192,7 +192,6 @@ def add_blob(part):
             print("Drawing on %d %d" % (sampled_x,sampled_y))
             cv2.circle(img, (sampled_y, sampled_x), radius, colour, -1)
             updateEncodings()
-            break
             return True
         count += 1
         # print(sampled_x,sampled_y,"No")
@@ -284,13 +283,20 @@ def join_blobs(source='button'):
 
 ###### Join a Blob to the nearest edge #####
 def join_blob_and_edge(level):
+    wanted_pair = None
+    min_dist = None
     for blob in level.children:
-        pairs,_ = closest_pair_of_points_between_blobs(blob,level)
-        join_2_points(*pairs)
+        pairs,dist = closest_pair_of_points_between_blobs(blob,level)
+        if min_dist is None:
+            min_dist = dist
+            wanted_pair = pairs
+        elif dist < min_dist:
+            min_dist = dist
+            wanted_pair = pairs
+    join_2_points(*wanted_pair)
 
 def join_blob_to_edge(source='button'):
     exit_protect_mode()
-
     for level in globalLevels[1]:
         for blob in level.children:
             pairs,_ = closest_pair_of_points_between_blobs(blob,level)
@@ -547,18 +553,19 @@ def add_most_frequent_blob(source='button'):
 
     # for i in range(len(globalLevels[1])):
     #     add_similar_blobs(i,20)  
-    add_reduce_blobs([0,1],[4,3])  
+    add_reduce_blobs([0,1],[1,5])  
 
 def reduce_n_blobs(index,goal):
+    global globalLevels
     current_children = len(globalLevels[1][index].children)
-    while curr_children < goal:
+    while current_children > goal:
         join_blob_and_edge(globalLevels[1][index])
-        curr_children += 1
+        current_children += -1
 
 
 
 def add_reduce_blobs(indices_of_parts,list_of_changes):
-
+    global globalLevels
     for i in range(len(indices_of_parts)):
         index = indices_of_parts[i]
         goal = list_of_changes[i]
@@ -574,9 +581,13 @@ def add_reduce_blobs(indices_of_parts,list_of_changes):
                 curr_children = len(globalLevels[1][index].children)
                 while curr_children < goal:
                     output = add_blob(globalLevels[1][index])
+                    if output is False:
+                        print "Cannot change blobs"
+                        continue
                     curr_children = len(globalLevels[1][index].children)
 
         else:
+            print "reducing"
             reduce_n_blobs(index,goal)
 
 
