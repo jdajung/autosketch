@@ -225,7 +225,7 @@ def increase_blob(source='button'):
 def delete_blob(blob):
     global img
     cv2.fillPoly(img, pts =[blob.contour], color=(255,255,255))
-    # updateEncodings()
+    updateEncodings()
 
 def delete_first_blob(part):
     if not part.children:
@@ -292,7 +292,12 @@ def join_blobs(source='button'):
 def join_blob_and_edge(level):
     wanted_pair = None
     min_dist = None
+    if len(level.children) == 1 and len(level.children[0].children) > 0:
+        delete_blob(level.children[0])
+        return
     for blob in level.children:
+        if len(blob.children) > 0:
+            continue
         pairs,dist = closest_pair_of_points_between_blobs(blob,level)
         if min_dist is None:
             min_dist = dist
@@ -300,6 +305,15 @@ def join_blob_and_edge(level):
         elif dist < min_dist:
             min_dist = dist
             wanted_pair = pairs
+    if level.children > 1:
+        for combo in itertools.combinations(level.children,2):
+            pairs,dist = closest_pair_of_points_between_blobs(*combo)
+            if min_dist is None:
+                min_dist = dist
+                wanted_pair = pairs
+            elif dist < min_dist:
+                min_dist = dist
+                wanted_pair = pairs
     join_2_points(*wanted_pair)
 
 def join_blob_to_edge(source='button'):
@@ -384,7 +398,7 @@ def draw_most_frequent_if_possible(required_blob_points,black_points_in_the_part
                     if check_if_all_points_are_at_certain_distance_from_all_the_blobs(new_points_for_blob.tolist(),level):
                         print "Eureka!!! Found a point"
                         img[new_image_for_blob < 10] = 0
-                        add_blob_tried_position = cv2.fillPoly(np.int8(add_blob_tried_position), pts =np.int32(np.array([np.expand_dims(new_points_for_blob,axis = 1)])), color=(0))
+                        add_blob_tried_position = cv2.fillPoly(add_blob_tried_position, pts =[np.expand_dims(new_points_for_blob,axis = 1)], color=(1))
                         # level.last_search_point = (i,j)
                         updateEncodings()
                         return True
@@ -428,7 +442,7 @@ def draw_most_frequent_if_possible(required_blob_points,black_points_in_the_part
 
 
 def add_similar_blobs(index,target):
-    global globalLevels,img,mainRoot
+    global globalLevels,img,mainRoot,add_blob_tried_position
     exit_protect_mode()
     sorted_parts = sortParts(mainRoot, 'area')
     level = sorted_parts[index]
@@ -491,7 +505,7 @@ def add_similar_blobs(index,target):
             res = cv2.matchTemplate(img_gray,template,cv2.TM_CCOEFF_NORMED)
 
             # print res
-            threshold = 0.6
+            threshold = 0.5
             loc = np.where( res >= threshold)
             # print res[loc]
             if len(loc[0]) > 3:
@@ -510,6 +524,7 @@ def add_similar_blobs(index,target):
     required_blob_image = images[sorted_freq[-1][0]]
     required_blob_points = [point[0] for point in required_blob.contour]
     curr_no_blobs  = len(level.children)
+    add_blob_tried_position = None
     while curr_no_blobs < target :
         sorted_parts = sortParts(mainRoot, 'area')
         level = sorted_parts[index]
@@ -537,6 +552,8 @@ def add_similar_blobs(index,target):
         required_blob_image2 = np.roll(required_blob_image2,extreme_left_part[0] - extreme_left[0],axis = 1)
         required_blob_image2 = np.roll(required_blob_image2,extreme_top_part[1] - extreme_top[1],axis = 0)
 
+        if add_blob_tried_position is None:
+            add_blob_tried_position = np.zeros((img.shape[0],img.shape[1]))
         # cv2.circle(img,(left_limit,top_limit),1,(255,0,0),-1)
         # cv2.circle(img,(right_limit,bottom_limit),1,(0,0,255),-1)
         # updateEncodings()
@@ -562,14 +579,14 @@ def add_most_frequent_blob(source='button'):
 
     # for i in range(len(globalLevels[1])):
     #     add_similar_blobs(i,20)  
-    add_reduce_blobs([0,1],[1,5])  
+    add_reduce_blobs([0,1],[0,10])  
 
 def reduce_n_blobs(index,goal):
     global globalLevels,mainRoot
     sorted_parts = sortParts(mainRoot, 'area')
     current_children = len(sorted_parts[index].children)
     while current_children > goal:
-        join_blob_and_edge(globalLevels[1][index])
+        join_blob_and_edge(sorted_parts[index])
         sorted_parts = sortParts(mainRoot, 'area')
         current_children += -1
 
@@ -577,12 +594,14 @@ def reduce_n_blobs(index,goal):
 
 def add_reduce_blobs(indices_of_parts,list_of_changes):
     global globalLevels,mainRoot
+    print indices_of_parts
     for i in range(len(indices_of_parts)):
         index = indices_of_parts[i]
         goal = list_of_changes[i]
         if goal < 0:
             print "ERROR! goal is negetive"
         sorted_parts = sortParts(mainRoot, 'area')
+        print index,goal
         curr_children = len(sorted_parts[index].children)
         changes = goal - curr_children
         if changes == 0:
@@ -599,7 +618,6 @@ def add_reduce_blobs(indices_of_parts,list_of_changes):
                         continue
                     sorted_parts = sortParts(mainRoot, 'area')
                     curr_children = len(sorted_parts[index].children)
-
         else:
             print "reducing"
             reduce_n_blobs(index,goal)
