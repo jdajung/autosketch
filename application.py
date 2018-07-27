@@ -760,6 +760,7 @@ def exit_select_mode():
     blob_image = None
     image_wo_blob = None
     click_points = None
+    updateEncodings()
     # drawProtected = False
 
 def select_blob(x,y):
