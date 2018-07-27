@@ -40,6 +40,7 @@ WHITE = (255,255,255)
 LIGHT_YELLOW = (153,255,255)
 GREEN = (50,205,50)
 RED = (0,0,255)
+DARK_RED = (34,34,178)
 PART_CUT_WIDTH = 3
 SUGGEST_NODES = 200
 EXTRA_CUT_LENGTH = 5
@@ -1116,9 +1117,36 @@ def reduce_part(source='button'):
     logEvent(source + 'reduce_part')
 
 
+def sliderRelease(event):
+    global suggestToggle
+    if suggestToggle != 0:
+        updateSuggestion()
+    updateEncodings()
+    logEvent('sliderRelease', event.x, event.y)
+
+
 def updateSuggestion():
     global currSuggestion
     currSuggestion = bestfs_part_reduction(SUGGEST_NODES)
+
+
+def match_points_to_parts(pts):
+    global mainRoot
+    if mainRoot is None or len(mainRoot.children) <= 0:
+        return [None for _ in range(len(pts))]
+    matches = []
+    sorted_parts = sortParts(mainRoot, 'area')
+    for pt in pts:
+        i=0
+        found = False
+        while i < len(sorted_parts) and not found:
+            if in_contour(pt[0], pt[1], sorted_parts[i].contour, 0):
+                found = True
+                matches.append(sorted_parts[i])
+            i += 1
+        if not found:
+            matches.append(None)
+    return matches
 
 
 def drawSuggestion():
@@ -1133,12 +1161,21 @@ def drawSuggestion():
 
     centroid_lists = [info[4] for info in currSuggestion[2]]
     centroids = [l[0] for l in centroid_lists]
-    encodings = [info[1] for info in currSuggestion[2]]
-    # TODO: Find parts matched by centroids using in_contour
+    encodings = currSuggestion[1][1]
+    matches = match_points_to_parts(centroids)
     for i in range(len(centroids)):
         centroid = centroids[i]
         encoding = encodings[i]
-        cv2.circle(markedImg, centroid, 3, GREEN, -1)
+        part = matches[i]
+        if part is None:
+            text = '-/' + str(encoding)
+            cv2.putText(markedImg, text, centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.5, DARK_RED, 2)
+        else:
+            text = str(part.encoding) + '/' + str(encoding)
+            if part.encoding == encoding:
+                cv2.putText(markedImg, text, centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.5, GREEN, 2)
+            else:
+                cv2.putText(markedImg, text, centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.5, RED, 2)
 
     # cv2.putText(displayImage, binString, centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
     #
@@ -2997,6 +3034,7 @@ if __name__ == "__main__":
 
     addRemovePrefScale = Scale(tkRoot, from_=-20, to=20, orient=HORIZONTAL, label='Prefer Removing or Adding Blobs')
     addRemovePrefScale.place(x=1270, y=480, width=200)
+    addRemovePrefScale.bind("<ButtonRelease-1>", sliderRelease)
     ambPanel = Label(text="Removing           Neutral              Adding", font=sliderFont)
     ambPanel.place(x=1250, y=540, width=240, height=20)
 
