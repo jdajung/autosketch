@@ -421,9 +421,10 @@ def draw_most_frequent_if_possible(required_blob_points,black_points_in_the_part
 
 
 def add_similar_blobs(index,target):
-    global globalLevels,img
+    global globalLevels,img,mainRoot
     exit_protect_mode()
-    level = globalLevels[1][index]
+    sorted_parts = sortParts(mainRoot, 'area')
+    level = sorted_parts[index]
     freq_cnt = {}
     images = {}
     start = time.time()
@@ -503,7 +504,8 @@ def add_similar_blobs(index,target):
     required_blob_points = [point[0] for point in required_blob.contour]
     curr_no_blobs  = len(level.children)
     while curr_no_blobs < target :
-        level = globalLevels[1][index]
+        sorted_parts = sortParts(mainRoot, 'area')
+        level = sorted_parts[index]
         bw = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         extreme_left = tuple(required_blob.contour[required_blob.contour[:, :, 0].argmin()][0]) # extreme_left
         extreme_right = tuple(required_blob.contour[required_blob.contour[:, :, 0].argmax()][0]) # extreme_right
@@ -556,35 +558,40 @@ def add_most_frequent_blob(source='button'):
     add_reduce_blobs([0,1],[1,5])  
 
 def reduce_n_blobs(index,goal):
-    global globalLevels
-    current_children = len(globalLevels[1][index].children)
+    global globalLevels,mainRoot
+    sorted_parts = sortParts(mainRoot, 'area')
+    current_children = len(sorted_parts[index].children)
     while current_children > goal:
         join_blob_and_edge(globalLevels[1][index])
+        sorted_parts = sortParts(mainRoot, 'area')
         current_children += -1
 
 
 
 def add_reduce_blobs(indices_of_parts,list_of_changes):
-    global globalLevels
+    global globalLevels,mainRoot
     for i in range(len(indices_of_parts)):
         index = indices_of_parts[i]
         goal = list_of_changes[i]
         if goal < 0:
             print "ERROR! goal is negetive"
-        curr_children = len(globalLevels[1][index].children)
+        sorted_parts = sortParts(mainRoot, 'area')
+        curr_children = len(sorted_parts[index].children)
         changes = goal - curr_children
         if changes == 0:
             continue
         elif changes > 0:
             output = add_similar_blobs(index,goal)
             if output is False:
-                curr_children = len(globalLevels[1][index].children)
+                sorted_parts = sortParts(mainRoot, 'area')
+                curr_children = len(sorted_parts[index].children)
                 while curr_children < goal:
-                    output = add_blob(globalLevels[1][index])
+                    output = add_blob(sorted_parts[index])
                     if output is False:
                         print "Cannot change blobs"
                         continue
-                    curr_children = len(globalLevels[1][index].children)
+                    sorted_parts = sortParts(mainRoot, 'area')
+                    curr_children = len(sorted_parts[index].children)
 
         else:
             print "reducing"
