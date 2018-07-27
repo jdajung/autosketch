@@ -92,6 +92,7 @@ suggestionIndex = 0
 drawTargetToggle = 0
 drawContoursToggle = 0
 
+
 #reset global variables to initial values
 def resetVars():
     global mode, drawColour, drawRadius, suggestions, targetEncoding, drawEncodings, drawCentroids, \
@@ -187,7 +188,7 @@ def add_blob(part):
     range_in_x = (extreme_top[1],extreme_bottom[1])
     range_in_y = (extreme_left[0],extreme_right[0])
     count = 0
-    max_count = 100
+    max_count = 200
 
     while count < max_count:
         sampled_x = int(np.random.uniform(range_in_x[0],range_in_x[1],1))
@@ -197,11 +198,14 @@ def add_blob(part):
             print("Drawing on %d %d" % (sampled_x,sampled_y))
             cv2.circle(img, (sampled_y, sampled_x), radius, colour, -1)
             updateEncodings()
-            break
+            return True
         count += 1
-        print(sampled_x,sampled_y,"No")
-    if count >= max_count:
-        print "ERROR: No valid location found for blob placement"
+        # print(sampled_x,sampled_y,"No")
+        if count >= max_count:
+            print "ERROR: No valid location found for blob placement"
+            return False
+
+    return False
 
 def increase_blob(source='button'):
     global undoStack, undoIndex, img, globalLevels
@@ -269,7 +273,7 @@ def closest_pair_of_blobs_points(blobs):
 
 def join_2_points(p1, p2):
     global img
-    cv2.line(img,(p1[0][0],p1[0][1]),(p2[0][0],p2[0][1]),(0,0,0),drawRadius)
+    cv2.line(img,(p1[0][0],p1[0][1]),(p2[0][0],p2[0][1]),(0,0,0),2)
     updateEncodings()
 
 
@@ -284,11 +288,21 @@ def join_blobs(source='button'):
             # blob_with_min_area = min(level.children,key = lambda x: x.area)
 
 ###### Join a Blob to the nearest edge #####
-
+def join_blob_and_edge(level):
+    wanted_pair = None
+    min_dist = None
+    for blob in level.children:
+        pairs,dist = closest_pair_of_points_between_blobs(blob,level)
+        if min_dist is None:
+            min_dist = dist
+            wanted_pair = pairs
+        elif dist < min_dist:
+            min_dist = dist
+            wanted_pair = pairs
+    join_2_points(*wanted_pair)
 
 def join_blob_to_edge(source='button'):
     exit_protect_mode()
-
     for level in globalLevels[1]:
         for blob in level.children:
             pairs,_ = closest_pair_of_points_between_blobs(blob,level)
@@ -330,12 +344,25 @@ def check_if_all_points_are_at_certain_distance_from_all_the_blobs(points,level,
 
 
 def draw_most_frequent_if_possible(required_blob_points,black_points_in_the_part,level,right_limit,left_limit,bottom_limit,top_limit,required_blob_image):
-    global globalLevels,img
+    global globalLevels,img,add_blob_tried_position
     mode = 'random'
+    max_try = 300
+    try_count = 0
     if mode == 'random':
         while True:
+
+            if try_count > max_try:
+                print "Sorry! I Was not able to find a point quickly"
+                break
+
+
             sampled_x_displacement = int(np.random.uniform(0,right_limit-left_limit,1))
             sampled_y_displacement = int(np.random.uniform(0,bottom_limit-top_limit,1))
+            print sampled_x_displacement,sampled_y_displacement
+            if add_blob_tried_position[top_limit + sampled_y_displacement,left_limit + sampled_x_displacement] == 1:
+                print 'hi'
+                continue
+            try_count += 1
             new_points_for_blob = required_blob_points.copy()
             new_points_for_blob[:,0] += sampled_x_displacement
             new_points_for_blob[:,1]  += sampled_y_displacement
@@ -356,9 +383,14 @@ def draw_most_frequent_if_possible(required_blob_points,black_points_in_the_part
                     if check_if_all_points_are_at_certain_distance_from_all_the_blobs(new_points_for_blob.tolist(),level):
                         print "Eureka!!! Found a point"
                         img[new_image_for_blob < 10] = 0
+                        add_blob_tried_position = cv2.fillPoly(np.int8(add_blob_tried_position), pts =np.int32(np.array([np.expand_dims(new_points_for_blob,axis = 1)])), color=(0))
                         # level.last_search_point = (i,j)
                         updateEncodings()
-                        return
+                        return True
+                    else:
+                        add_blob_tried_position[top_limit + sampled_y_displacement,left_limit + sampled_x_displacement] = 1
+                else:
+                    add_blob_tried_position[top_limit + sampled_y_displacement,left_limit + sampled_x_displacement] = 1
 
     else:
         for i in range(0,right_limit - left_limit,4):
@@ -389,77 +421,95 @@ def draw_most_frequent_if_possible(required_blob_points,black_points_in_the_part
                             img[new_image_for_blob < 10] = 0
                             # level.last_search_point = (i,j)
                             updateEncodings()
-                            return
+                            return True
+
+    return False
 
 
-def add_most_frequent_blob(source='button'):
+def add_similar_blobs(index,target):
     global globalLevels,img
     exit_protect_mode()
+    level = globalLevels[1][index]
+    freq_cnt = {}
+    images = {}
+    start = time.time()
+    for i in range(len(level.children)-1):
+        child_i = level.children[i]
+        extreme_left_part = tuple(child_i.contour[child_i.contour[:, :, 0].argmin()][0])[0] - 7# extreme_left
+        extreme_right_part = tuple(child_i.contour[child_i.contour[:, :, 0].argmax()][0])[0] + 7# extreme_right
+        extreme_top_part = tuple(child_i.contour[child_i.contour[:, :, 1].argmin()][0])[1]  - 7# extreme_top
+        extreme_bottom_part = tuple(child_i.contour[child_i.contour[:, :, 1].argmax()][0])[1]  + 7# extreme_bottom
 
-    for level in globalLevels[1]:
-        freq_cnt = {}
-        images = {}
-        for i in range(len(level.children)):
-            child_i = level.children[i]
-            extreme_left_part = tuple(child_i.contour[child_i.contour[:, :, 0].argmin()][0])[0] - 7# extreme_left
-            extreme_right_part = tuple(child_i.contour[child_i.contour[:, :, 0].argmax()][0])[0] + 7# extreme_right
-            extreme_top_part = tuple(child_i.contour[child_i.contour[:, :, 1].argmin()][0])[1]  - 7# extreme_top
-            extreme_bottom_part = tuple(child_i.contour[child_i.contour[:, :, 1].argmax()][0])[1]  + 7# extreme_bottom
+        img_gray = img[extreme_top_part:extreme_bottom_part,extreme_left_part:extreme_right_part,:]
+        img_gray = cv2.cvtColor(img_gray, cv2.COLOR_BGR2GRAY)
 
-            img_gray = img[extreme_top_part:extreme_bottom_part,extreme_left_part:extreme_right_part,:]
-            img_gray = cv2.cvtColor(img_gray, cv2.COLOR_BGR2GRAY)
-            for j in range(len(level.children)):
+        bw_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        temp_image = np.full(bw_img.shape,0,dtype='uint8')
+        bw_img_mask = bw_img < 100
+        cv2.fillPoly(temp_image, pts =[child_i.contour], color=(255))
+        temp_image = np.logical_and(temp_image, bw_img_mask)
+        temp_image = np.logical_not(temp_image)
+        temp_image += np.zeros_like(temp_image)
+        temp_image = temp_image*255
+        temp_image = np.uint8(temp_image)
 
-                child = level.children[j]
-                extreme_left = tuple(child.contour[child.contour[:, :, 0].argmin()][0])[0] - 3 # extreme_left
-                extreme_right = tuple(child.contour[child.contour[:, :, 0].argmax()][0])[0] + 3  # extreme_right
-                extreme_top = tuple(child.contour[child.contour[:, :, 1].argmin()][0])[1] - 3# extreme_top
-                extreme_bottom = tuple(child.contour[child.contour[:, :, 1].argmax()][0])[1] + 3# extreme_bottom
-                bw_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                temp_image = np.full(bw_img.shape,0,dtype='uint8')
-                bw_img_mask = bw_img < 100
-                cv2.fillPoly(temp_image, pts =[child.contour], color=(255))
-                temp_image = np.logical_and(temp_image, bw_img_mask)
-                temp_image = np.logical_not(temp_image)
-                temp_image += np.zeros_like(temp_image)
-                temp_image = temp_image*255
-                temp_image = np.uint8(temp_image)
-                # temp_image[np.squeeze(child.contour,axis = 1)] = 0
-                # _,temp_contours,hierarchy = cv2.findContours(temp_image,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-                template = temp_image[extreme_top:extreme_bottom,extreme_left:extreme_right]
-                # template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
-                w, h = template.shape[1], template.shape[0]
-                if img_gray.shape[1] < w or img_gray.shape[0] < h:
-                    img_gray = np.pad(img_gray,(max(w-img_gray.shape[1],h-img_gray.shape[0]) + 5),'constant',constant_values = (255))
-                    img_gray = np.uint8(img_gray)
+        if i not in images:
+            images[i] = np.dstack([temp_image]*3)
+
+        for j in range(i+1,len(level.children)):
+
+            child = level.children[j]
+            extreme_left = tuple(child.contour[child.contour[:, :, 0].argmin()][0])[0] - 3 # extreme_left
+            extreme_right = tuple(child.contour[child.contour[:, :, 0].argmax()][0])[0] + 3  # extreme_right
+            extreme_top = tuple(child.contour[child.contour[:, :, 1].argmin()][0])[1] - 3# extreme_top
+            extreme_bottom = tuple(child.contour[child.contour[:, :, 1].argmax()][0])[1] + 3# extreme_bottom
+            bw_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            temp_image = np.full(bw_img.shape,0,dtype='uint8')
+            bw_img_mask = bw_img < 100
+            cv2.fillPoly(temp_image, pts =[child.contour], color=(255))
+            temp_image = np.logical_and(temp_image, bw_img_mask)
+            temp_image = np.logical_not(temp_image)
+            temp_image += np.zeros_like(temp_image)
+            temp_image = temp_image*255
+            temp_image = np.uint8(temp_image)
+            # temp_image[np.squeeze(child.contour,axis = 1)] = 0
+            # _,temp_contours,hierarchy = cv2.findContours(temp_image,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+            template = temp_image[extreme_top:extreme_bottom,extreme_left:extreme_right]
+            # template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+            w, h = template.shape[1], template.shape[0]
+            if img_gray.shape[1] < w or img_gray.shape[0] < h:
+                img_gray = np.pad(img_gray,(max(w-img_gray.shape[1],h-img_gray.shape[0]) + 5),'constant',constant_values = (255))
+                img_gray = np.uint8(img_gray)
 
 
-                if j not in images:
-                    images[i] = np.dstack([temp_image]*3)
+            if j not in images:
+                images[j] = np.dstack([temp_image]*3)
 
 
-                res = cv2.matchTemplate(img_gray,template,cv2.TM_CCOEFF_NORMED)
+            res = cv2.matchTemplate(img_gray,template,cv2.TM_CCOEFF_NORMED)
 
-                # print res
-                threshold = 0.7
-                loc = np.where( res >= threshold)
-                print res[loc]
-                if len(loc[0]) > 3:
-                    print i,j
-                    if i in freq_cnt:
-                        freq_cnt[i] += 1
-                    else:
-                        freq_cnt[i] = 1                    
-        print freq_cnt
-
-        if len(freq_cnt) == 0:
-            print "ERROR! No similar contours found"
-            return
-        sorted_freq = sorted(freq_cnt.items(), key = lambda x: x[1])
-        required_blob = level.children[sorted_freq[-1][0]]
-        required_blob_image = images[sorted_freq[-1][0]]
-        # print required_blob.contour.shape
-        required_blob_points = [point[0] for point in required_blob.contour]
+            # print res
+            threshold = 0.6
+            loc = np.where( res >= threshold)
+            # print res[loc]
+            if len(loc[0]) > 3:
+                # print i,j
+                if i in freq_cnt:
+                    freq_cnt[i] += 1
+                else:
+                    freq_cnt[i] = 1                    
+    # print freq_cnt
+    print time.time() - start
+    if len(freq_cnt) == 0:
+        print "ERROR! No similar contours found"
+        return False
+    sorted_freq = sorted(freq_cnt.items(), key = lambda x: x[1]) 
+    required_blob = level.children[sorted_freq[-1][0]]
+    required_blob_image = images[sorted_freq[-1][0]]
+    required_blob_points = [point[0] for point in required_blob.contour]
+    curr_no_blobs  = len(level.children)
+    while curr_no_blobs < target :
+        level = globalLevels[1][index]
         bw = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         extreme_left = tuple(required_blob.contour[required_blob.contour[:, :, 0].argmin()][0]) # extreme_left
         extreme_right = tuple(required_blob.contour[required_blob.contour[:, :, 0].argmax()][0]) # extreme_right
@@ -477,16 +527,24 @@ def add_most_frequent_blob(source='button'):
         bottom_limit = extreme_bottom_part[1] - (extreme_bottom[1] - extreme_top[1])
         black_points_in_the_part = [point[0].tolist() for child in level.children for point in child.contour]
         
-        required_blob_points = np.array(required_blob_points)
-        required_blob_points[:,0] += extreme_left_part[0] - extreme_left[0]
-        required_blob_points[:,1] += extreme_top_part[1] - extreme_top[1]
-        required_blob_image = np.roll(required_blob_image,extreme_left_part[0] - extreme_left[0],axis = 1)
-        required_blob_image = np.roll(required_blob_image,extreme_top_part[1] - extreme_top[1],axis = 0)
+        required_blob_points2 = np.array(required_blob_points)
+        required_blob_points2[:,0] += extreme_left_part[0] - extreme_left[0]
+        required_blob_points2[:,1] += extreme_top_part[1] - extreme_top[1]
+        required_blob_image2 = required_blob_image.copy()
+        required_blob_image2 = np.roll(required_blob_image2,extreme_left_part[0] - extreme_left[0],axis = 1)
+        required_blob_image2 = np.roll(required_blob_image2,extreme_top_part[1] - extreme_top[1],axis = 0)
 
-        cv2.circle(img,(left_limit,top_limit),1,(255,0,0),-1)
-        cv2.circle(img,(right_limit,bottom_limit),1,(0,0,255),-1)
-        updateEncodings()
-        draw_most_frequent_if_possible(required_blob_points,black_points_in_the_part,level,right_limit,left_limit,bottom_limit,top_limit,required_blob_image)
+        # cv2.circle(img,(left_limit,top_limit),1,(255,0,0),-1)
+        # cv2.circle(img,(right_limit,bottom_limit),1,(0,0,255),-1)
+        # updateEncodings()
+        if draw_most_frequent_if_possible(required_blob_points2,black_points_in_the_part,level,right_limit,left_limit,bottom_limit,top_limit,required_blob_image2):
+            curr_no_blobs += 1
+        else:
+            print "ERROR! The algorithm was not able to add blobs"
+            return False
+
+    return True
+
         # cv2.circle(img,extreme_top,1,(0,255,0),-1)
         # cv2.circle(img,extreme_bottom,1,(255,0,255),-1)
 
@@ -496,8 +554,47 @@ def add_most_frequent_blob(source='button'):
 
         # @todo : placing of the detected frequent blob
 
+def add_most_frequent_blob(source='button'):
+    exit_protect_mode()
+
+    # for i in range(len(globalLevels[1])):
+    #     add_similar_blobs(i,20)  
+    add_reduce_blobs([0,1],[1,5])  
+
+def reduce_n_blobs(index,goal):
+    global globalLevels
+    current_children = len(globalLevels[1][index].children)
+    while current_children > goal:
+        join_blob_and_edge(globalLevels[1][index])
+        current_children += -1
 
 
+
+def add_reduce_blobs(indices_of_parts,list_of_changes):
+    global globalLevels
+    for i in range(len(indices_of_parts)):
+        index = indices_of_parts[i]
+        goal = list_of_changes[i]
+        if goal < 0:
+            print "ERROR! goal is negetive"
+        curr_children = len(globalLevels[1][index].children)
+        changes = goal - curr_children
+        if changes == 0:
+            continue
+        elif changes > 0:
+            output = add_similar_blobs(index,goal)
+            if output is False:
+                curr_children = len(globalLevels[1][index].children)
+                while curr_children < goal:
+                    output = add_blob(globalLevels[1][index])
+                    if output is False:
+                        print "Cannot change blobs"
+                        continue
+                    curr_children = len(globalLevels[1][index].children)
+
+        else:
+            print "reducing"
+            reduce_n_blobs(index,goal)
 
 
 
@@ -2701,6 +2798,7 @@ if __name__ == "__main__":
     resetVars()
     checkCommandLineEncoding()
     img = np.ones((CANVAS_HEIGHT, CANVAS_WIDTH, 3), np.uint8) * 255 #the canvas
+    add_blob_tried_position = np.zeros((img.shape[0],img.shape[1]),np.uint8)
     protectImg = img.copy() #only contains colour for protected parts
     markedImg = img.copy() #the canvas with tool overlays
     suggestionImg = np.ones((CANVAS_HEIGHT, CANVAS_WIDTH, 3), np.uint8) * 255
