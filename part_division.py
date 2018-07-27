@@ -102,7 +102,7 @@ def find_divisions(part_vals, bitstring, cost_fun, multipliers=None):
     if ans:
         return min(ans)
     else:
-        return (sys.maxint, None, None)
+        return ((sys.maxint>>1)+len(part_vals), None, None)
 
 
 if __name__ == '__main__':

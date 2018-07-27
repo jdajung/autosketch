@@ -38,7 +38,12 @@ BLACK = (0,0,0)
 GREY = (100,100,100) #unused in parent version
 WHITE = (255,255,255)
 LIGHT_YELLOW = (153,255,255)
+GREEN = (50,205,50)
+RED = (0,0,255)
+DARK_RED = (34,34,178)
 PART_CUT_WIDTH = 3
+SUGGEST_NODES = 200
+EXTRA_CUT_LENGTH = 5
 
 #global variables
 targetBinString = '11001101'#'1110010110110011001110101101101111' #Put your target encoding here!
@@ -83,6 +88,7 @@ targetExtras = []
 drawEncodings = 0
 drawCentroids = 0
 drawAmbToggle = 0
+suggestToggle = 0
 suggestionIndex = 0
 drawTargetToggle = 0
 drawContoursToggle = 0
@@ -91,7 +97,7 @@ drawContoursToggle = 0
 #reset global variables to initial values
 def resetVars():
     global mode, drawColour, drawRadius, suggestions, targetEncoding, drawEncodings, drawCentroids, \
-        drawAmbToggle, suggestionIndex, suggestionTopString
+        drawAmbToggle, suggestionIndex, suggestionTopString, suggestToggle
 
     mode = 'idle'
     drawColour = (0, 0, 0)
@@ -100,6 +106,7 @@ def resetVars():
     drawEncodings = 0
     drawCentroids = 0
     drawAmbToggle = 0
+    suggestToggle = 0
     suggestionIndex = 0
     suggestionTopString = ""
 
@@ -877,7 +884,6 @@ def extend_line(pt1,pt2,extend_dist):
 def closest_point_pairs():
     global mainRoot, markedImg
     max_cut_dist = 30
-    root_extra_dist = 5
     if mainRoot is None or len(mainRoot.children) <= 1:
         return []
     min_list = []
@@ -923,11 +929,14 @@ def closest_point_pairs():
                         curr[0] = closest_pt_on_segment(curr[1],curr[2],curr[3])
                     closest = min(candidates)
                     if determine_adjacent(closest[0][1],closest[1]) and closest[0][0]<=max_cut_dist**2:
-                        if not using_root:
-                            min_list.append((closest[0][0],closest[0][1],closest[1],part1.cNum,part2.cNum))
-                        else:
-                            root_point = extend_line(closest[0][1],closest[1],root_extra_dist)
-                            min_list.append((closest[0][0],root_point,closest[1],part1.cNum,part2.cNum))
+                        extended_1 = extend_line(closest[0][1],closest[1],EXTRA_CUT_LENGTH)
+                        extended_2 = extend_line(closest[1],closest[0][1],EXTRA_CUT_LENGTH)
+                        min_list.append((closest[0][0],extended_1,extended_2,part1.cNum,part2.cNum))
+                        # if not using_root:
+                        #     min_list.append((closest[0][0],closest[0][1],closest[1],part1.cNum,part2.cNum))
+                        # else:
+                        #     root_point = extend_line(closest[0][1],closest[1],EXTRA_CUT_LENGTH)
+                        #     min_list.append((closest[0][0],root_point,closest[1],part1.cNum,part2.cNum))
 
     # for item in min_list:
     #     cv2.line(markedImg,item[1],item[2],(0,0,255),2)
@@ -939,10 +948,10 @@ def closest_point_pairs():
 
 
 def est_cut_area(pt1,pt2,width):
-    return int(round(math.sqrt(square_dist(pt1,pt2))*width))
+    return int(round(max((math.sqrt(square_dist(pt1,pt2))-EXTRA_CUT_LENGTH*2)*width,0)))
 
 
-def bfs_part_reduction(depth):
+def bfs_part_reduction(max_nodes):
     global targetBinString, mainRoot
     if mainRoot is None or len(mainRoot.children)<=0:
         return []
@@ -959,62 +968,68 @@ def bfs_part_reduction(depth):
     cuts_used = []
     cuts_tried[tuple(cuts_used)] = (initial_div[0],part_info)
     #root_state = (initial_div[0],part_info,[],0)
-    best_state = cuts_used
+    best_state = (cuts_used, initial_div)
     q = deque([cuts_used])
+    num_nodes = 0
 
     while q:
         curr_cuts = q.popleft()
         curr_info = cuts_tried[tuple(curr_cuts)][1]
-        if len(curr_cuts) > depth:
+        if num_nodes > max_nodes:
             break
         else:
             for i in range(len(possible_cuts)):
-                new_cuts = curr_cuts[:] + [i]
-                new_cuts.sort()
-                if tuple(new_cuts) not in cuts_tried:
-                    new_info = []
-                    part_cut_1 = possible_cuts[i][3]
-                    part_cut_2 = possible_cuts[i][4]
-                    found_part = None
-                    cut_area = 0
-                    for curr_entry in curr_info:
-                        if part_cut_1 not in curr_entry[2] and part_cut_2 not in curr_entry[2]:
-                            new_info.append([curr_entry[0],curr_entry[1],curr_entry[2][:],curr_entry[3]])
-                        elif found_part is None:
-                            found_part = curr_entry
-                        else:
-                            cut_area = est_cut_area(possible_cuts[i][1],possible_cuts[i][2],PART_CUT_WIDTH)
-                            new_info.append([curr_entry[0]+found_part[0]+cut_area,
-                                             curr_entry[1]+found_part[1],
-                                             curr_entry[2]+found_part[2],
-                                             max(curr_entry[3],found_part[3])])
-                    new_info.sort()
-                    ambiguous = False
-                    for i in range(len(new_info)):
-                        entry = new_info[i]
-                        if part_cut_1 in entry[2]:
-                            if i>=1 and abs(new_info[i-1][0] - entry[0]) < cut_area*ambig_factor:
-                                ambiguous = True
-                            if i<len(new_info)-1 and abs(new_info[i+1][0] - entry[0]) < cut_area*ambig_factor:
-                                ambiguous = True
-                    if ambiguous:
-                        cuts_tried[tuple(new_cuts)] = (None,new_info)
-                    else:
-                        new_div = find_divisions([i[1] for i in new_info],targetBinString, \
-                                                 exp_weight_cost_fun(cost_base, prefVal),[i[3] for i in new_info])
-                        if new_div is None:
+                if i not in curr_cuts:
+                    new_cuts = curr_cuts[:] + [i]
+                    new_cuts.sort()
+                    if tuple(new_cuts) not in cuts_tried:
+                        new_info = []
+                        part_cut_1 = possible_cuts[i][3]
+                        part_cut_2 = possible_cuts[i][4]
+                        found_part = None
+                        cut_area = 0
+                        for curr_entry in curr_info:
+                            if part_cut_1 not in curr_entry[2] and part_cut_2 not in curr_entry[2]:
+                                new_info.append([curr_entry[0],curr_entry[1],curr_entry[2][:],curr_entry[3]])
+                            elif found_part is None:
+                                found_part = curr_entry
+                            else:
+                                cut_area = est_cut_area(possible_cuts[i][1],possible_cuts[i][2],PART_CUT_WIDTH)
+                                new_info.append([curr_entry[0]+found_part[0]+cut_area,
+                                                 curr_entry[1]+found_part[1],
+                                                 curr_entry[2]+found_part[2],
+                                                 max(curr_entry[3],found_part[3])])
+                        new_info.sort()
+                        ambiguous = False
+                        for i in range(len(new_info)):
+                            entry = new_info[i]
+                            if part_cut_1 in entry[2]:
+                                if i>=1 and abs(new_info[i-1][0] - entry[0]) < cut_area*ambig_factor:
+                                    ambiguous = True
+                                if i<len(new_info)-1 and abs(new_info[i+1][0] - entry[0]) < cut_area*ambig_factor:
+                                    ambiguous = True
+                        if ambiguous:
                             cuts_tried[tuple(new_cuts)] = (None,new_info)
                         else:
-                            cuts_tried[tuple(new_cuts)] = (new_div[0],new_info)
-                            if new_div[0] < cuts_tried[tuple(best_state)][0]:
-                                best_state = new_cuts
-                            q.append(new_cuts)
+                            new_div = find_divisions([i[1] for i in new_info],targetBinString, \
+                                                     exp_weight_cost_fun(cost_base, prefVal),[i[3] for i in new_info])
+                            if new_div is None:
+                                cuts_tried[tuple(new_cuts)] = (None,new_info)
+                            else:
+                                cuts_tried[tuple(new_cuts)] = (new_div[0],new_info)
+                                if new_div[0] < cuts_tried[tuple(best_state[0])][0]:
+                                    best_state = (new_cuts, new_div)
+                                q.append(new_cuts)
+            num_nodes += 1
     final_cuts = []
-    for index in best_state:
+    for index in best_state[0]:
         final_cuts.append(possible_cuts[index])
-    return final_cuts
+    return (final_cuts, best_state[1])
 
 
+#returns ([(cut_length,(pt1),(pt2),part1.cNum,part2.cNum),
+#          (div_cost,[part_encodings],[divider_posns]),
+#          [(part_area,part_encoding,[former_part.cNums],multiplier,[former_part.centroids])]
 def bestfs_part_reduction(max_nodes):
     global targetBinString, mainRoot
     if mainRoot is None or len(mainRoot.children)<=0:
@@ -1026,74 +1041,75 @@ def bestfs_part_reduction(max_nodes):
     part_info = []
     for i in range(len(sorted_parts)):
         part = sorted_parts[i]
-        part_info.append([part.area,part.encoding,[part.cNum],multipliers[i]])
+        part_info.append([part.area,part.encoding,[part.cNum],multipliers[i],[part.centroid]])
     initial_div = find_divisions([i[1] for i in part_info],targetBinString,exp_weight_cost_fun(cost_base, prefVal),multipliers)
     cuts_tried = {}
     cuts_used = []
     cuts_tried[tuple(cuts_used)] = (initial_div[0],part_info)
-    #root_state = (initial_div[0],part_info,[],0)
-    best_state = cuts_used
+    best_state = (cuts_used, initial_div, part_info)
     num_nodes = 0
-    q = [cuts_used]
+    q = [(initial_div[0], cuts_used)]
     heapq.heapify(q)
 
     while q:
-        curr_cuts = heapq.heappop(q)
+        curr_cuts = heapq.heappop(q)[1]
         curr_info = cuts_tried[tuple(curr_cuts)][1]
         if num_nodes > max_nodes:
             break
         else:
             for i in range(len(possible_cuts)):
-                new_cuts = curr_cuts[:] + [i]
-                new_cuts.sort()
-                if tuple(new_cuts) not in cuts_tried:
-                    new_info = []
-                    part_cut_1 = possible_cuts[i][3]
-                    part_cut_2 = possible_cuts[i][4]
-                    found_part = None
-                    cut_area = 0
-                    for curr_entry in curr_info:
-                        if part_cut_1 not in curr_entry[2] and part_cut_2 not in curr_entry[2]:
-                            new_info.append([curr_entry[0],curr_entry[1],curr_entry[2][:],curr_entry[3]])
-                        elif found_part is None:
-                            found_part = curr_entry
-                        else:
-                            cut_area = est_cut_area(possible_cuts[i][1],possible_cuts[i][2],PART_CUT_WIDTH)
-                            new_info.append([curr_entry[0]+found_part[0]+cut_area,
-                                             curr_entry[1]+found_part[1],
-                                             curr_entry[2]+found_part[2],
-                                             max(curr_entry[3],found_part[3])])
-                    new_info.sort()
-                    ambiguous = False
-                    for i in range(len(new_info)):
-                        entry = new_info[i]
-                        if part_cut_1 in entry[2]:
-                            if i>=1 and abs(new_info[i-1][0] - entry[0]) < cut_area*ambig_factor:
-                                ambiguous = True
-                            if i<len(new_info)-1 and abs(new_info[i+1][0] - entry[0]) < cut_area*ambig_factor:
-                                ambiguous = True
-                    if ambiguous:
-                        cuts_tried[tuple(new_cuts)] = (None,new_info)
-                    else:
-                        new_div = find_divisions([i[1] for i in new_info],targetBinString, \
-                                                 exp_weight_cost_fun(cost_base, prefVal),[i[3] for i in new_info])
-                        if new_div is None:
+                if i not in curr_cuts:
+                    new_cuts = curr_cuts[:] + [i]
+                    new_cuts.sort()
+                    if tuple(new_cuts) not in cuts_tried:
+                        new_info = []
+                        part_cut_1 = possible_cuts[i][3]
+                        part_cut_2 = possible_cuts[i][4]
+                        found_part = None
+                        cut_area = 0
+                        for curr_entry in curr_info:
+                            if part_cut_1 not in curr_entry[2] and part_cut_2 not in curr_entry[2]:
+                                new_info.append([curr_entry[0],curr_entry[1],curr_entry[2][:],curr_entry[3],curr_entry[4][:]])
+                            elif found_part is None:
+                                found_part = curr_entry
+                            else:
+                                cut_area = est_cut_area(possible_cuts[i][1],possible_cuts[i][2],PART_CUT_WIDTH)
+                                new_info.append([curr_entry[0]+found_part[0]+cut_area,
+                                                 curr_entry[1]+found_part[1],
+                                                 curr_entry[2]+found_part[2],
+                                                 max(curr_entry[3],found_part[3]),
+                                                 curr_entry[4]+found_part[4]])
+                        new_info.sort()
+                        ambiguous = False
+                        for i in range(len(new_info)):
+                            entry = new_info[i]
+                            if part_cut_1 in entry[2]:
+                                if i>=1 and abs(new_info[i-1][0] - entry[0]) < cut_area*ambig_factor:
+                                    ambiguous = True
+                                if i<len(new_info)-1 and abs(new_info[i+1][0] - entry[0]) < cut_area*ambig_factor:
+                                    ambiguous = True
+                        if ambiguous:
                             cuts_tried[tuple(new_cuts)] = (None,new_info)
                         else:
-                            cuts_tried[tuple(new_cuts)] = (new_div[0],new_info)
-                            if new_div[0] < cuts_tried[tuple(best_state)][0]:
-                                best_state = new_cuts
-                            heapq.heappush(q,new_cuts)
+                            new_div = find_divisions([i[1] for i in new_info],targetBinString, \
+                                                     exp_weight_cost_fun(cost_base, prefVal),[i[3] for i in new_info])
+                            if new_div is None:
+                                cuts_tried[tuple(new_cuts)] = (None,new_info)
+                            else:
+                                cuts_tried[tuple(new_cuts)] = (new_div[0],new_info)
+                                if new_div[0] < cuts_tried[tuple(best_state[0])][0]:
+                                    best_state = (new_cuts,new_div,new_info)
+                                heapq.heappush(q,(new_div[0],new_cuts))
             num_nodes += 1
     final_cuts = []
-    for index in best_state:
+    for index in best_state[0]:
         final_cuts.append(possible_cuts[index])
-    return final_cuts
+    return (final_cuts, best_state[1], best_state[2])
 
 
 def perform_best_part_cuts():
     global img
-    best_cuts = bestfs_part_reduction(100)
+    best_cuts = bestfs_part_reduction(SUGGEST_NODES)[0]
     for cut in best_cuts:
         cv2.line(img,cut[1],cut[2],WHITE,PART_CUT_WIDTH)
     updateEncodings()
@@ -1106,6 +1122,76 @@ def reduce_part(source='button'):
     # for level in globalLevels[1]:
     #     cut_part(level)
     logEvent(source + 'reduce_part')
+
+
+def sliderRelease(event):
+    global suggestToggle
+    if suggestToggle != 0:
+        updateSuggestion()
+    updateEncodings()
+    logEvent('sliderRelease', event.x, event.y)
+
+
+def updateSuggestion():
+    global currSuggestion
+    currSuggestion = bestfs_part_reduction(SUGGEST_NODES)
+
+
+def match_points_to_parts(pts):
+    global mainRoot
+    if mainRoot is None or len(mainRoot.children) <= 0:
+        return [None for _ in range(len(pts))]
+    matches = []
+    sorted_parts = sortParts(mainRoot, 'area')
+    for pt in pts:
+        i=0
+        found = False
+        while i < len(sorted_parts) and not found:
+            if in_contour(pt[0], pt[1], sorted_parts[i].contour, 0):
+                found = True
+                matches.append(sorted_parts[i])
+            i += 1
+        if not found:
+            matches.append(None)
+    return matches
+
+
+def drawSuggestion():
+    global mainRoot, markedImg, currSuggestion
+    if mainRoot is None:
+        return
+
+    cuts = currSuggestion[0]
+    for cut in cuts:
+        cv2.line(markedImg,cut[1],cut[2],RED,10)
+        #TODO: Detect when the cut has happened and use GREEN
+
+    centroid_lists = [info[4] for info in currSuggestion[2]]
+    centroids = [l[0] for l in centroid_lists]
+    encodings = currSuggestion[1][1]
+    matches = match_points_to_parts(centroids)
+    for i in range(len(centroids)):
+        centroid = centroids[i]
+        encoding = encodings[i]
+        part = matches[i]
+        if part is None:
+            text = '-/' + str(encoding)
+            cv2.putText(markedImg, text, centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.5, DARK_RED, 2)
+        else:
+            text = str(part.encoding) + '/' + str(encoding)
+            if part.encoding == encoding:
+                cv2.putText(markedImg, text, centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.5, GREEN, 2)
+            else:
+                cv2.putText(markedImg, text, centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.5, RED, 2)
+
+    # cv2.putText(displayImage, binString, centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+    #
+    # for pair in ambiguousPairs:
+    #     contours = [pair[0].contour, pair[1].contour]
+    #     cv2.drawContours(displayImage, contours, -1, (0, 165, 255), 2)
+    #     cv2.circle(displayImage, pair[0].centroid, 3, (0, 165, 255), -1)
+    #     cv2.circle(displayImage, pair[1].centroid, 3, (0, 165, 255), -1)
+    #     cv2.line(displayImage, pair[0].centroid, pair[1].centroid, (0, 165, 255), 2)
 
 ##########################################
 
@@ -1153,7 +1239,7 @@ def determine_adjacent(point1, point2):
 def updateEncodingsForReal():
     global drawEncodings, drawCentroids, drawAmbToggle, suggestionIndex, suggestionImg, suggestions, \
         suggestionLocs, drawTargetToggle, img, markedImg, mainRoot, expPhase, blobMode, oldEncoding, \
-        blobOrderMode, blobIconDict, oldPartNum, globalLevels, usingThreading, oldEncodingNum
+        blobOrderMode, blobIconDict, oldPartNum, globalLevels, usingThreading, oldEncodingNum, suggestToggle
     markedImg = img.copy()
 
     #find the region adjacency tree of the image
@@ -1218,6 +1304,9 @@ def updateEncodingsForReal():
     if drawAmbToggle != 0:
         if drawAmbToggle == 1:
             drawAmbiguities(levels, markedImg, blobOrderMode, partOrderMode)
+
+    if suggestToggle != 0:
+        drawSuggestion()
 
     #draw contours of region adjacency tree (hidden feature)
     if drawContoursToggle != 0:
@@ -1432,6 +1521,8 @@ def keyPress(event):
         shrinkBrush('keyboard')
     elif event.char == ' ':
         toggleOrder('keyboard')
+    elif event.char == '/' or event.char == '?':
+        toggleSuggest('keyboard')
     elif event.char == 'S':
         saveCanvas(0)
     elif event.char == 'F':
@@ -1658,6 +1749,16 @@ def toggleOrder(source='button'):
     updateEncodings()
     updateOrderPanel()
     logEvent(source + 'ToggleOrder')
+
+
+def toggleSuggest(source='button'):
+    global suggestToggle
+    suggestToggle = (suggestToggle + 1) % 2
+    if suggestToggle != 0:
+        updateSuggestion()
+    updateEncodings()
+    updateSuggestPanel()
+    logEvent(source + 'ToggleSuggest')
 
 
 #toggles the labelling overlay between parts, blobs, and off
@@ -2069,6 +2170,14 @@ def updateOrderPanel():
         elif drawCentroids == 2:
             newText = 'Blob'
     orderPanel.configure(text=newText)
+
+
+def updateSuggestPanel():
+    global suggestPanel, suggestToggle
+    newText = 'Off'
+    if suggestToggle == 1:
+        newText = 'On'
+    suggestPanel.configure(text=newText)
 
 
 #updates the GUI element that displays the state of the ambiguity overlay
@@ -2763,6 +2872,7 @@ if __name__ == "__main__":
     appRunning = True
     levelsMutex = mutex.mutex()
     drawProtected = False
+    currSuggestion = None
 
     ellipsisImg = cv2.imread('ellipsis.png')
     ellipsisImg = Image.fromarray(ellipsisImg)
@@ -2931,6 +3041,7 @@ if __name__ == "__main__":
 
     addRemovePrefScale = Scale(tkRoot, from_=-20, to=20, orient=HORIZONTAL, label='Prefer Removing or Adding Blobs')
     addRemovePrefScale.place(x=1270, y=480, width=200)
+    addRemovePrefScale.bind("<ButtonRelease-1>", sliderRelease)
     ambPanel = Label(text="Removing           Neutral              Adding", font=sliderFont)
     ambPanel.place(x=1250, y=540, width=240, height=20)
 
@@ -2952,15 +3063,22 @@ if __name__ == "__main__":
     updateOrderPanel()
 
     ambPanel = Label(text="Off", font=buttonTextFont)
-    ambPanel.place(x=1405, y=695, width=50, height=30)
-    updateAmbPanel()
+    # ambPanel.place(x=1405, y=695, width=50, height=30)
+    # updateAmbPanel()
+
+    suggestPanel = Label(text="Off", font=buttonTextFont)
+    suggestPanel.place(x=1405, y=695, width=50, height=30)
+    updateSuggestPanel()
+
 
     labellerBtn = Button(tkRoot, text="Label", font=buttonTextFont, command=toggleLabeller, bg="red")
     labellerBtn.place(x=1285, y=730, width=50, height=50)
     orderingBtn = Button(tkRoot, text="Order", font=buttonTextFont, command=toggleOrder, bg="cyan")
     orderingBtn.place(x=1345, y=730, width=50, height=50)
     ambBtn = Button(tkRoot, text="Ambig", font=buttonTextFont, command=toggleAmb, bg="orange")
-    ambBtn.place(x=1405, y=730, width=50, height=50)
+    # ambBtn.place(x=1405, y=730, width=50, height=50)
+    suggestBtn = Button(tkRoot, text="Sug.", font=buttonTextFont, command=toggleSuggest, bg="green")
+    suggestBtn.place(x=1405, y=730, width=50, height=50)
 
     #set event handlers
     canvasPanel.bind("<Button-1>", leftMouseDown)
