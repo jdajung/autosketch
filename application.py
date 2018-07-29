@@ -1176,7 +1176,13 @@ def match_points_to_parts(pts):
 
 def drawSuggestion():
     global mainRoot, markedImg, currSuggestion
-    if mainRoot is None:
+    if mainRoot is None or len(mainRoot.children) <= 0 or currSuggestion is None or len(currSuggestion) <= 0:
+        text1 = 'Start by drawing a marker with at least one part.'
+        text2 = 'As a rule of thumb, you will probably want about half as many parts as the number of bits you are encoding.'
+        text3 = '(e.g. 10 bits -> 5 parts, 20 bits -> 10 parts)'
+        cv2.putText(markedImg, text1, (10,20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, GREEN, 2)
+        cv2.putText(markedImg, text2, (10,40), cv2.FONT_HERSHEY_SIMPLEX, 0.6, GREEN, 2)
+        cv2.putText(markedImg, text3, (10,60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, GREEN, 2)
         return
 
     cuts = currSuggestion[0]
@@ -1476,7 +1482,7 @@ def leftMouseDown(event):
 
 #handles mouse releases
 def leftMouseUp(event):
-    global lastX, lastY, tool
+    global lastX, lastY, tool, suggestToggle
     if tool == 'protect':
         pass
     else:
@@ -1484,6 +1490,9 @@ def leftMouseUp(event):
         lastX = -1
         lastY = -1
         addUndoable()
+        if suggestToggle != 0:
+            updateSuggestion()
+            updateEncodings()
     logEvent('leftMouseUp', event.x, event.y)
 
 
