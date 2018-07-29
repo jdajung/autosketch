@@ -52,6 +52,7 @@ class Component:
         self.encChunks = []
         self.bitsRepresented = -1
         self.protected = False
+        self.dnd = False
         self.last_search_point = (0,0)
 
     def __str__(self):

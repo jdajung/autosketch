@@ -740,6 +740,94 @@ def colour_protected():
                 drawProtected = True
     updateGuiImage()
 
+#### Drag and drop blobs ########
+
+def select_blob_btn(source='button'):
+    global tool,selectBtn
+    if tool == 'select':
+        exit_select_mode()
+    else:
+        selectBtn.config(relief=SUNKEN)
+        tool = 'select'
+    logEvent(source + 'select_toggle')
+
+def exit_select_mode():
+    global tool, selectBtn, select_img,current_selected_blob,blob_image,click_points,image_wo_blob
+    # protectBtn.config(relief=RAISED)
+    selectBtn.config(relief=RAISED)
+    tool = 'pen'
+    current_selected_blob = None
+    blob_image = None
+    image_wo_blob = None
+    click_points = None
+    updateEncodings()
+    # drawProtected = False
+
+def select_blob(x,y):
+    global mainRoot,current_selected_blob,blob_image,click_points
+    current_selected_blob = None
+    blob_image = None
+    click_points = (x,y)
+    if mainRoot is None:
+        return
+    selected = None
+    for part in mainRoot.children:
+        for child in part.children:
+            if in_contour(x, y, child.contour, 0):
+                selected = child
+                break
+    if selected is not None:
+        if selected.dnd:
+            selected.dnd = False
+        else:
+            selected.dnd = True
+
+        current_selected_blob = selected
+
+def remove_the_selected_blob():
+    global current_selected_blob,blob_image,img,image_wo_blob
+
+    if current_selected_blob is None:
+        pass
+    else:
+        bw_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        blob_image = np.full(bw_img.shape,0,dtype='uint8')
+        bw_img_mask = bw_img < 100
+        cv2.fillPoly(blob_image, pts =[current_selected_blob.contour], color=(255))
+        blob_image = np.logical_and(blob_image, bw_img_mask)
+        blob_image = np.logical_not(blob_image)
+        blob_image += np.zeros_like(blob_image)
+        blob_image = blob_image*255
+        blob_image = np.uint8(blob_image)
+        blob_image = np.dstack([blob_image]*3)
+        img[blob_image < 10] = 255
+        image_wo_blob = img.copy()
+
+def move_selected(x,y):
+    global current_selected_blob,img,blob_image,click_points,image_wo_blob,canvasPanel,displayImg
+
+    if current_selected_blob is None:
+        pass
+    else:
+        if blob_image is None:
+            remove_the_selected_blob()
+        change_in_x = x - click_points[0]
+        change_in_y = y - click_points[1]
+        click_points = (x,y)
+        blob_image = np.roll(blob_image,change_in_x,axis = 1)
+        blob_image = np.roll(blob_image,change_in_y,axis = 0)
+        img = image_wo_blob.copy()
+        img[blob_image < 10] = 0
+        displayImg = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        displayImg = Image.fromarray(displayImg)
+        displayImg = ImageTk.PhotoImage(displayImg)
+        canvasPanel.configure(image=displayImg)
+        canvasPanel.image = displayImg
+
+
+
+
+
 
 ####### Code for Reducing a part #######
 
@@ -1474,6 +1562,8 @@ def leftMouseDown(event):
     global mode, tool
     if tool == 'protect':
         toggle_blob_protection(event.x, event.y)
+    elif tool == 'select':
+        select_blob(event.x , event.y)
     else:
         mode = 'drawing'
         drawStuff(event.x, event.y)
@@ -1485,6 +1575,8 @@ def leftMouseUp(event):
     global lastX, lastY, tool, suggestToggle
     if tool == 'protect':
         pass
+    elif tool == 'select':
+        exit_select_mode()
     else:
         mode = 'idle'
         lastX = -1
@@ -1501,6 +1593,8 @@ def leftMouseMove(event):
     global tool
     if tool == 'protect':
         pass
+    elif tool == 'select':
+        move_selected(event.x,event.y)
     else:
         drawStuff(event.x, event.y)
     logEvent('leftMouseMove', event.x, event.y)
@@ -3065,6 +3159,9 @@ if __name__ == "__main__":
 
     protectBtn = Button(tkRoot, text="Prot.", font=buttonTextFont, command=protect_btn)
     protectBtn.place(x=1345, y=420, width=50, height=50)
+
+    selectBtn = Button(tkRoot, text="Sel.", font=buttonTextFont, command=select_blob_btn)
+    selectBtn.place(x=1405, y=420, width=50, height=50)
 
     addRemovePrefScale = Scale(tkRoot, from_=-20, to=20, orient=HORIZONTAL, label='Prefer Removing or Adding Blobs')
     addRemovePrefScale.place(x=1270, y=480, width=200)
