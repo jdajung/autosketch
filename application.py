@@ -596,7 +596,7 @@ def add_most_frequent_blob(source='button'):
 
     # for i in range(len(globalLevels[1])):
     #     add_similar_blobs(i,20)  
-    add_reduce_blobs([0,1],[0,10])  
+    add_reduce_blobs([0],[20])  
 
 def reduce_n_blobs(index,goal):
     global globalLevels,mainRoot
@@ -634,7 +634,7 @@ def add_reduce_blobs(indices_of_parts,list_of_changes):
                     output = add_blob(sorted_parts[index])
                     if output is False:
                         print "Cannot change blobs"
-                        continue
+                        break
                     sorted_parts = sortParts(mainRoot, 'area')
                     curr_children = len(sorted_parts[index].children)
         else:
