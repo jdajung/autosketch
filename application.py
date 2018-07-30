@@ -41,9 +41,10 @@ LIGHT_YELLOW = (153,255,255)
 GREEN = (50,205,50)
 RED = (0,0,255)
 DARK_RED = (34,34,178)
+ORANGE = (0, 165, 255)
 PART_CUT_WIDTH = 3
 SUGGEST_NODES = 200
-EXTRA_CUT_LENGTH = 5
+EXTRA_CUT_LENGTH = 10
 
 #global variables
 targetBinString = '11001101'#'1110010110110011001110101101101111' #Put your target encoding here!
@@ -98,7 +99,7 @@ drawContoursToggle = 0
 #reset global variables to initial values
 def resetVars():
     global mode, drawColour, drawRadius, suggestions, targetEncoding, drawEncodings, drawCentroids, \
-        drawAmbToggle, suggestionIndex, suggestionTopString, suggestToggle
+        drawAmbToggle, suggestionIndex, suggestionTopString, suggestToggle, protected_centroids
 
     mode = 'idle'
     drawColour = (0, 0, 0)
@@ -110,6 +111,7 @@ def resetVars():
     suggestToggle = 0
     suggestionIndex = 0
     suggestionTopString = ""
+    protected_centroids = []
 
 
 #draw to the canvas on mouse events
@@ -406,8 +408,10 @@ def draw_most_frequent_if_possible(required_blob_points,black_points_in_the_part
                 if len(filtered_points) == 0:
                     if check_if_all_points_are_at_certain_distance_from_all_the_blobs(new_points_for_blob.tolist(),level):
                         print "Eureka!!! Found a point"
-                        img[new_image_for_blob < 10] = 0
-                        recent_auto_changes.append(('add_shape',new_image_for_blob < 10))
+                        change_rgb_points = new_image_for_blob < 10
+                        change_points = np.all(change_rgb_points, axis=-1)
+                        img[change_rgb_points] = 0
+                        recent_auto_changes.append(('add_shape',change_points))
                         add_blob_tried_position = cv2.fillPoly(add_blob_tried_position, pts =[np.expand_dims(new_points_for_blob,axis = 1)], color=(1))
                         # level.last_search_point = (i,j)
                         updateEncodings()
@@ -443,7 +447,10 @@ def draw_most_frequent_if_possible(required_blob_points,black_points_in_the_part
                     if len(filtered_points) == 0:
                         if check_if_all_points_are_at_certain_distance_from_all_the_blobs(new_points_for_blob.tolist(),level):
                             print "Eureka!!! Found a point"
-                            img[new_image_for_blob < 10] = 0
+                            change_rgb_points = new_image_for_blob < 10
+                            change_points = np.all(change_rgb_points, axis=-1)
+                            img[change_rgb_points] = 0
+                            recent_auto_changes.append(('add_shape',change_points))
                             # level.last_search_point = (i,j)
                             updateEncodings()
                             return True
@@ -669,7 +676,7 @@ def str_format_recent_auto_changes():
             out_str += str(entry) + ' '
         else:
             altered_pts = np.where(entry[1])
-            if altered_pts and altered_pts[0]:
+            if len(altered_pts)>0 and len(altered_pts[0])>0:
                 top_left = (altered_pts[0][0],altered_pts[1][0])
             else:
                 top_left = (-1,-1)
@@ -758,10 +765,10 @@ def exit_protect_mode():
     protectBtn.config(relief=RAISED)
     tool = 'pen'
     protectImg = np.ones((CANVAS_HEIGHT, CANVAS_WIDTH, 3), np.uint8) * 255
-    drawProtected = False
+    # drawProtected = False
 
 def toggle_blob_protection(x, y):
-    global mainRoot
+    global mainRoot, protected_centroids
     if mainRoot is None:
         return
     selected = None
@@ -772,8 +779,16 @@ def toggle_blob_protection(x, y):
     if selected is not None:
         if selected.protected:
             selected.protected = False
+            i = 0
+            while i < len(protected_centroids):
+                centroid = protected_centroids[i]
+                if in_contour(centroid[0],centroid[1],selected.contour,0):
+                    protected_centroids = protected_centroids[:i] + protected_centroids[i+1:]
+                    i -= 1
+                i += 1
         else:
             selected.protected = True
+            protected_centroids.append(selected.centroid)
     colour_protected()
 
 def colour_protected():
@@ -1290,8 +1305,9 @@ def sliderRelease(event):
 def updateSuggestion():
     global currSuggestion
     currSuggestion = bestfs_part_reduction(SUGGEST_NODES)
-    set_target_dividers(currSuggestion[1][2])
-    updateVisualTargetPanel()
+    if currSuggestion:
+        set_target_dividers(currSuggestion[1][2])
+        updateVisualTargetPanel()
     updateEncodings()
     logEvent('updateSuggestion', str(currSuggestion))
 
@@ -1357,10 +1373,33 @@ def drawSuggestion():
 
 
 def drawFixes():
-    pass
-#returns ([(cut_length,(pt1),(pt2),part1.cNum,part2.cNum),
-#          (div_cost,[part_encodings],[divider_posns]),
-#          [(part_area,part_encoding,[former_part.cNums],multiplier,[former_part.centroids])]
+    global markedImg, recent_auto_changes
+    for change in recent_auto_changes:
+        if change[0] == 'cut_part' or change[0] == 'join_blobs' or change[0] == 'join_to_edge':
+            cv2.line(markedImg,change[1],change[2],ORANGE,change[3])
+        elif change[0] == 'delete_blob':
+            cv2.drawContours(markedImg,[change[1]], -1, ORANGE, 2)
+        elif change[0] == 'add_circle_blob':
+            cv2.circle(markedImg, change[1], change[2], ORANGE, -1)
+        elif change[0] == 'add_shape':
+            markedImg[change[1]] = ORANGE
+        else:
+            print 'ERROR: drawFixes encountered unrecognized change description'
+
+        # recent_auto_changes.append(('cut_part', cut[1], cut[2], PART_CUT_WIDTH))
+        # cv2.line(img,cut[1],cut[2],WHITE,PART_CUT_WIDTH)
+
+        # img[new_image_for_blob < 10] = 0
+        # recent_auto_changes.append(('add_shape',new_image_for_blob < 10))
+
+        # join_2_points(wanted_pair[0], wanted_pair[1], 2)
+        # recent_auto_changes.append((description, tuple(wanted_pair[0][0]), tuple(wanted_pair[1][0]), 2))
+
+        # cv2.fillPoly(img, pts =[blob.contour], color=(255,255,255))
+        # recent_auto_changes.append(('delete_blob', blob.contour))
+        #
+        # cv2.circle(img, (sampled_y, sampled_x), radius, colour, -1)
+        # recent_auto_changes.append(('add_circle_blob', (sampled_y, sampled_x), radius))
 
 ##########################################
 
@@ -1409,13 +1448,19 @@ def updateEncodingsForReal():
     global drawEncodings, drawCentroids, drawAmbToggle, suggestionIndex, suggestionImg, suggestions, \
         suggestionLocs, drawTargetToggle, img, markedImg, mainRoot, expPhase, blobMode, oldEncoding, \
         blobOrderMode, blobIconDict, oldPartNum, globalLevels, usingThreading, oldEncodingNum, suggestToggle, \
-        suggestMode
+        suggestMode, protected_centroids
     markedImg = img.copy()
 
     #find the region adjacency tree of the image
     if not usingThreading:
         determineMainRoot()
     levels = globalLevels
+
+    if mainRoot is not None and len(mainRoot.children) > 0:
+        for part in mainRoot.children:
+            for centroid in protected_centroids:
+                if in_contour(centroid[0],centroid[1],part.contour,0):
+                    part.protected = True
 
     #determine if the encoding has changed. If it has, update the target panel
     currEncoding = -1
@@ -1500,6 +1545,7 @@ def updateEncodingsForReal():
     #    levels = genLevels(img, expPhase, blobMode, blobOrderMode, partOrderMode)
     # drawSuggestion(suggestionIndex+1, suggestions[suggestionIndex], levels, markedImg)
 
+    colour_protected()
     updateGuiImage()
 
 
@@ -1949,6 +1995,8 @@ def toggleSuggest(source='button'):
     suggestToggle = (suggestToggle + 1) % 2
     if suggestToggle != 0:
         updateSuggestion()
+    else:
+        updateEncodings()
     updateSuggestPanel()
     logEvent(source + 'ToggleSuggest')
 
@@ -3078,6 +3126,7 @@ if __name__ == "__main__":
     drawProtected = False
     currSuggestion = None
     recent_auto_changes = []
+    protected_centroids = []
 
     ellipsisImg = cv2.imread('ellipsis.png')
     ellipsisImg = Image.fromarray(ellipsisImg)
