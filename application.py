@@ -38,6 +38,7 @@ BLACK = (0,0,0)
 GREY = (100,100,100) #unused in parent version
 WHITE = (255,255,255)
 LIGHT_YELLOW = (153,255,255)
+DARK_YELLOW = (0,204,204)
 GREEN = (50,205,50)
 RED = (0,0,255)
 DARK_RED = (34,34,178)
@@ -789,7 +790,8 @@ def toggle_blob_protection(x, y):
         else:
             selected.protected = True
             protected_centroids.append(selected.centroid)
-    colour_protected()
+    # colour_protected()
+    updateEncodings()
 
 def colour_protected():
     global mainRoot, protectImg, drawProtected
@@ -1461,6 +1463,7 @@ def updateEncodingsForReal():
             for centroid in protected_centroids:
                 if in_contour(centroid[0],centroid[1],part.contour,0):
                     part.protected = True
+                    cv2.drawContours(markedImg, [part.contour], -1, DARK_YELLOW, 4)
 
     #determine if the encoding has changed. If it has, update the target panel
     currEncoding = -1
@@ -1545,7 +1548,6 @@ def updateEncodingsForReal():
     #    levels = genLevels(img, expPhase, blobMode, blobOrderMode, partOrderMode)
     # drawSuggestion(suggestionIndex+1, suggestions[suggestionIndex], levels, markedImg)
 
-    colour_protected()
     updateGuiImage()
 
 
@@ -2089,13 +2091,15 @@ def resetGuiImage():
 #updates the canvas portion of the GUI to the current canvas
 def updateGuiImage():
     global canvasPanel, markedImg, protectImg, drawProtected
-    if drawProtected:
-        combined = protectImg.copy()
-        marked_posns = np.where(markedImg != WHITE)
-        combined[marked_posns[0],marked_posns[1]] = markedImg[marked_posns[0],marked_posns[1]]
-        displayImg = cv2.cvtColor(combined, cv2.COLOR_BGR2RGB)
-    else:
-        displayImg = cv2.cvtColor(markedImg, cv2.COLOR_BGR2RGB)
+    # if drawProtected:
+    #     combined = protectImg.copy()
+    #     marked_posns = np.where(markedImg != WHITE)
+    #     combined[marked_posns[0],marked_posns[1]] = markedImg[marked_posns[0],marked_posns[1]]
+    #     displayImg = cv2.cvtColor(combined, cv2.COLOR_BGR2RGB)
+    # else:
+    #     displayImg = cv2.cvtColor(markedImg, cv2.COLOR_BGR2RGB)
+    displayImg = cv2.cvtColor(markedImg, cv2.COLOR_BGR2RGB)
+
     displayImg = Image.fromarray(displayImg)
     displayImg = ImageTk.PhotoImage(displayImg)
     canvasPanel.configure(image=displayImg)
