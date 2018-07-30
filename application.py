@@ -216,6 +216,7 @@ def add_blob(part):
 def increase_blob(source='button'):
     global undoStack, undoIndex, img, globalLevels
     exit_protect_mode()
+    exit_select_mode()
     print(globalLevels)
     for part in globalLevels[1]:
         add_blob(part)
@@ -244,6 +245,7 @@ def delete_first_blob(part):
 def decrease_blob(source='button'):
     global undoStack, undoIndex, img, globalLevels
     exit_protect_mode()
+    exit_select_mode()
     print(globalLevels)
     for level in globalLevels[1]:
         if len(level.children) > 2:
@@ -286,7 +288,8 @@ def join_2_points(p1, p2, thickness=2):
 
 def join_blobs(source='button'):
     global img,globalLevels, recent_auto_changes
-    exit_protect_mode()
+    # exit_protect_mode()
+    # exit_select_mode()
 
     for level in globalLevels[1]:
         if len(level.children) > 1:
@@ -329,7 +332,8 @@ def join_blob_and_edge(level):
     recent_auto_changes.append((description, tuple(wanted_pair[0][0]), tuple(wanted_pair[1][0]), 2))
 
 def join_blob_to_edge(source='button'):
-    exit_protect_mode()
+    # exit_protect_mode()
+    # exit_select_mode()
     for level in globalLevels[1]:
         for blob in level.children:
             pairs,_ = closest_pair_of_points_between_blobs(blob,level)
@@ -461,7 +465,8 @@ def draw_most_frequent_if_possible(required_blob_points,black_points_in_the_part
 
 def add_similar_blobs(index,target):
     global globalLevels,img,mainRoot,add_blob_tried_position,recent_auto_changes
-    exit_protect_mode()
+    # exit_protect_mode()
+    # exit_select_mode()
     sorted_parts = sortParts(mainRoot, 'area')
     level = sorted_parts[index]
     freq_cnt = {}
@@ -593,7 +598,8 @@ def add_similar_blobs(index,target):
         # @todo : placing of the detected frequent blob
 
 def add_most_frequent_blob(source='button'):
-    exit_protect_mode()
+    # exit_protect_mode()
+    # exit_select_mode()
 
     # for i in range(len(globalLevels[1])):
     #     add_similar_blobs(i,20)  
@@ -741,6 +747,7 @@ def auto_fix_blobs(prefVal=0.0):
 def auto_fix_blobs_btn(source='button'):
     global addRemovePrefScale, suggestMode
     exit_protect_mode()
+    exit_select_mode()
     if suggestMode == 0:
         pass
     elif suggestMode == 1:
@@ -754,6 +761,7 @@ def auto_fix_blobs_btn(source='button'):
 
 def protect_btn(source='button'):
     global tool, protectBtn
+    exit_select_mode()
     if tool == 'protect':
         exit_protect_mode()
     else:
@@ -789,7 +797,7 @@ def toggle_blob_protection(x, y):
                 i += 1
         else:
             selected.protected = True
-            protected_centroids.append(selected.centroid)
+            protected_centroids.append((x,y))
     # colour_protected()
     updateEncodings()
 
@@ -808,6 +816,7 @@ def colour_protected():
 
 def select_blob_btn(source='button'):
     global tool,selectBtn
+    exit_protect_mode()
     if tool == 'select':
         exit_select_mode()
     else:
@@ -826,6 +835,15 @@ def exit_select_mode():
     click_points = None
     updateEncodings()
     # drawProtected = False
+
+def reset_select_mode():
+    global tool, selectBtn, select_img,current_selected_blob,blob_image,click_points,image_wo_blob
+    # protectBtn.config(relief=RAISED)
+    current_selected_blob = None
+    blob_image = None
+    image_wo_blob = None
+    click_points = None
+    updateEncodings()
 
 def select_blob(x,y):
     global mainRoot,current_selected_blob,blob_image,click_points
@@ -1211,7 +1229,11 @@ def bestfs_part_reduction(max_nodes):
     part_info = []
     for i in range(len(sorted_parts)):
         part = sorted_parts[i]
-        part_info.append([part.area,part.encoding,[part.cNum],multipliers[i],[part.centroid]])
+        if in_contour(part.centroid[0],part.centroid[1],part.contour,0):
+            point_in_contour = part.centroid
+        else:
+            point_in_contour = tuple(part.contour[0][0])
+        part_info.append([part.area,part.encoding,[part.cNum],multipliers[i],[point_in_contour]])
     initial_div = find_divisions([i[1] for i in part_info],targetBinString,exp_weight_cost_fun(cost_base, prefVal),multipliers)
     cuts_tried = {}
     cuts_used = []
@@ -1292,6 +1314,7 @@ def reduce_part(source='button'):
     global undoStack, undoIndex, img, globalLevels
     perform_best_part_cuts()
     exit_protect_mode()
+    exit_select_mode()
     # for level in globalLevels[1]:
     #     cut_part(level)
     logEvent(source + 'reduce_part')
@@ -1650,6 +1673,7 @@ def addUndoable():
 def undo(source='button'):
     global undoStack, undoIndex, img
     exit_protect_mode()
+    exit_select_mode()
     if undoIndex < len(undoStack)-1:
         img = np.copy(undoStack[undoIndex+1])
         undoIndex += 1
@@ -1661,6 +1685,7 @@ def undo(source='button'):
 def redo(source='button'):
     global undoStack, undoIndex, img
     exit_protect_mode()
+    exit_select_mode()
     if undoIndex > 0:
         img = np.copy(undoStack[undoIndex-1])
         undoIndex -=1
@@ -1687,7 +1712,8 @@ def leftMouseUp(event):
     if tool == 'protect':
         pass
     elif tool == 'select':
-        exit_select_mode()
+        reset_select_mode()
+        # exit_select_mode()
     else:
         mode = 'idle'
         lastX = -1
@@ -2033,6 +2059,7 @@ def clearRootAndLevels():
 def clearCanvas(source='button'):
     global img, markedImg, suggestionTopString, globalLevels, mainRoot
     exit_protect_mode()
+    exit_select_mode()
     img = np.ones((CANVAS_HEIGHT, CANVAS_WIDTH, 3), np.uint8) * 255
     markedImg = img.copy()
     suggestionTopString = ""
@@ -2047,6 +2074,7 @@ def clearCanvas(source='button'):
 def growBrush(source='button'):
     global drawRadius
     exit_protect_mode()
+    exit_select_mode()
     growAmount = 2
     brushMax = 80
     if drawRadius+growAmount <= brushMax:
@@ -2061,6 +2089,7 @@ def growBrush(source='button'):
 def shrinkBrush(source='button'):
     global drawRadius
     exit_protect_mode()
+    exit_select_mode()
     shrinkAmount = 2
     brushMin = 5
     if drawRadius-shrinkAmount >= brushMin:
@@ -2125,6 +2154,7 @@ def updateGuiBrush():
 def smallBlackBrush():
     global drawRadius, drawColour
     exit_protect_mode()
+    exit_select_mode()
     drawRadius = 5
     drawColour = BLACK
     updateBrush()
@@ -2135,6 +2165,7 @@ def smallBlackBrush():
 def medBlackBrush():
     global drawRadius, drawColour
     exit_protect_mode()
+    exit_select_mode()
     drawRadius = 12
     drawColour = BLACK
     updateBrush()
@@ -2145,6 +2176,7 @@ def medBlackBrush():
 def largeBlackBrush():
     global drawRadius, drawColour
     exit_protect_mode()
+    exit_select_mode()
     drawRadius = 25
     drawColour = BLACK
     updateBrush()
@@ -2155,6 +2187,7 @@ def largeBlackBrush():
 def smallGreyBrush():
     global drawRadius, drawColour
     exit_protect_mode()
+    exit_select_mode()
     drawRadius = 5
     drawColour = GREY
     updateBrush()
@@ -2165,6 +2198,7 @@ def smallGreyBrush():
 def medGreyBrush():
     global drawRadius, drawColour
     exit_protect_mode()
+    exit_select_mode()
     drawRadius = 12
     drawColour = GREY
     updateBrush()
@@ -2175,6 +2209,7 @@ def medGreyBrush():
 def largeGreyBrush():
     global drawRadius, drawColour
     exit_protect_mode()
+    exit_select_mode()
     drawRadius = 25
     drawColour = GREY
     updateBrush()
@@ -2185,6 +2220,7 @@ def largeGreyBrush():
 def smallWhiteBrush():
     global drawRadius, drawColour
     exit_protect_mode()
+    exit_select_mode()
     drawRadius = 5
     drawColour = WHITE
     updateBrush()
@@ -2195,6 +2231,7 @@ def smallWhiteBrush():
 def medWhiteBrush():
     global drawRadius, drawColour
     exit_protect_mode()
+    exit_select_mode()
     drawRadius = 12
     drawColour = WHITE
     updateBrush()
@@ -2205,6 +2242,7 @@ def medWhiteBrush():
 def largeWhiteBrush():
     global drawRadius, drawColour
     exit_protect_mode()
+    exit_select_mode()
     drawRadius = 25
     drawColour = WHITE
     updateBrush()
@@ -3282,23 +3320,24 @@ if __name__ == "__main__":
 
     ########## Rahul's code ###############
     incBtn = Button(tkRoot, text="Inc", font=buttonTextFont, command=add_most_frequent_blob)#increase_blob)
-    incBtn.place(x=1285, y=300, width=50, height=50)
+    #incBtn.place(x=1285, y=300, width=50, height=50)
 
     decBtn = Button(tkRoot, text="Dec", font=buttonTextFont, command=join_blob_to_edge)
-    decBtn.place(x=1345, y=300, width=50, height=50)
+    #decBtn.place(x=1345, y=300, width=50, height=50)
 
     redprtBtn = Button(tkRoot, text="RedPart", font=buttonTextFont, command=reduce_part)
-    redprtBtn.place(x=1285, y=360, width=50, height=50)
+    #redprtBtn.place(x=1285, y=360, width=50, height=50)
 
     #and also some not Rahul's code
-    fixBlobBtn = Button(tkRoot, text="Fix", font=buttonTextFont, command=auto_fix_blobs_btn)
+    fixBlobBtn = Button(tkRoot, text="Fix", font=buttonTextFont, command=auto_fix_blobs_btn, bg='orange')
     fixBlobBtn.place(x=1285, y=420, width=50, height=50)
 
-    protectBtn = Button(tkRoot, text="Prot.", font=buttonTextFont, command=protect_btn)
+    protectBtn = Button(tkRoot, text="Prot.", font=buttonTextFont, command=protect_btn, bg='yellow3')
     protectBtn.place(x=1345, y=420, width=50, height=50)
 
     selectBtn = Button(tkRoot, text="Sel.", font=buttonTextFont, command=select_blob_btn)
-    selectBtn.place(x=1405, y=420, width=50, height=50)
+    selectBtn.place(x=1285, y=300, width=50, height=50)
+    #selectBtn.place(x=1405, y=420, width=50, height=50)
 
     addRemovePrefScale = Scale(tkRoot, from_=-20, to=20, orient=HORIZONTAL, label='Prefer Removing or Adding Blobs')
     addRemovePrefScale.place(x=1270, y=480, width=200)
