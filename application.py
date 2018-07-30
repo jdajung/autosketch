@@ -75,6 +75,7 @@ blobOrderMode = 'area'
 partOrderMode = 'area'
 mode = 'idle'  # 'idle', 'drawing', 'erasing'
 tool = 'pen'
+suggestMode = 0
 lastX = -1
 lastY = -1
 drawColour = (0, 0, 0)
@@ -173,7 +174,7 @@ def in_contour( x, y, contour,radius, radius_multiplier=3):
     return True
 
 def add_blob(part):
-    global img,drawRadius,drawColour
+    global img,drawRadius,drawColour,recent_auto_changes
     radius = 5
     colour = BLACK
 
@@ -198,6 +199,7 @@ def add_blob(part):
         if satisfy_check(part,sampled_x,sampled_y,radius) and in_contour(sampled_y,sampled_x,part.contour,radius):
             print("Drawing on %d %d" % (sampled_x,sampled_y))
             cv2.circle(img, (sampled_y, sampled_x), radius, colour, -1)
+            recent_auto_changes.append(('add_circle_blob', (sampled_y, sampled_x), radius))
             updateEncodings()
             return True
         count += 1
@@ -223,8 +225,9 @@ def increase_blob(source='button'):
 ####### Code for Deleting a blob #######
 
 def delete_blob(blob):
-    global img
+    global img, recent_auto_changes
     cv2.fillPoly(img, pts =[blob.contour], color=(255,255,255))
+    recent_auto_changes.append(('delete_blob', blob.contour))
     updateEncodings()
 
 def delete_first_blob(part):
@@ -272,14 +275,14 @@ def closest_pair_of_blobs_points(blobs):
 
     return min(accumulator,key = lambda x : x[1])
 
-def join_2_points(p1, p2):
-    global img
-    cv2.line(img,(p1[0][0],p1[0][1]),(p2[0][0],p2[0][1]),(0,0,0),2)
+def join_2_points(p1, p2, thickness=2):
+    global img, recent_auto_changes
+    cv2.line(img,(p1[0][0],p1[0][1]),(p2[0][0],p2[0][1]),(0,0,0),thickness)
     updateEncodings()
 
 
 def join_blobs(source='button'):
-    global img,globalLevels
+    global img,globalLevels, recent_auto_changes
     exit_protect_mode()
 
     for level in globalLevels[1]:
@@ -292,6 +295,7 @@ def join_blobs(source='button'):
 def join_blob_and_edge(level):
     wanted_pair = None
     min_dist = None
+    description = ""
     if len(level.children) == 1 and len(level.children[0].children) > 0:
         delete_blob(level.children[0])
         return
@@ -302,19 +306,24 @@ def join_blob_and_edge(level):
         if min_dist is None:
             min_dist = dist
             wanted_pair = pairs
+            description = "join_to_edge"
         elif dist < min_dist:
             min_dist = dist
             wanted_pair = pairs
+            description = "join_to_edge"
     if level.children > 1:
         for combo in itertools.combinations(level.children,2):
             pairs,dist = closest_pair_of_points_between_blobs(*combo)
             if min_dist is None:
                 min_dist = dist
                 wanted_pair = pairs
+                description = "join_blobs"
             elif dist < min_dist:
                 min_dist = dist
                 wanted_pair = pairs
-    join_2_points(*wanted_pair)
+                description = "join_blobs"
+    join_2_points(wanted_pair[0], wanted_pair[1], 2)
+    recent_auto_changes.append((description, tuple(wanted_pair[0][0]), tuple(wanted_pair[1][0]), 2))
 
 def join_blob_to_edge(source='button'):
     exit_protect_mode()
@@ -359,7 +368,7 @@ def check_if_all_points_are_at_certain_distance_from_all_the_blobs(points,level,
 
 
 def draw_most_frequent_if_possible(required_blob_points,black_points_in_the_part,level,right_limit,left_limit,bottom_limit,top_limit,required_blob_image):
-    global globalLevels,img,add_blob_tried_position
+    global globalLevels,img,add_blob_tried_position,recent_auto_changes
     mode = 'random'
     max_try = 300
     try_count = 0
@@ -373,9 +382,9 @@ def draw_most_frequent_if_possible(required_blob_points,black_points_in_the_part
 
             sampled_x_displacement = int(np.random.uniform(0,right_limit-left_limit,1))
             sampled_y_displacement = int(np.random.uniform(0,bottom_limit-top_limit,1))
-            print sampled_x_displacement,sampled_y_displacement
+            # print sampled_x_displacement,sampled_y_displacement
             if add_blob_tried_position[top_limit + sampled_y_displacement,left_limit + sampled_x_displacement] == 1:
-                print 'hi'
+                # print 'hi'
                 continue
             try_count += 1
             new_points_for_blob = required_blob_points.copy()
@@ -398,6 +407,7 @@ def draw_most_frequent_if_possible(required_blob_points,black_points_in_the_part
                     if check_if_all_points_are_at_certain_distance_from_all_the_blobs(new_points_for_blob.tolist(),level):
                         print "Eureka!!! Found a point"
                         img[new_image_for_blob < 10] = 0
+                        recent_auto_changes.append(('add_shape',new_image_for_blob < 10))
                         add_blob_tried_position = cv2.fillPoly(add_blob_tried_position, pts =[np.expand_dims(new_points_for_blob,axis = 1)], color=(1))
                         # level.last_search_point = (i,j)
                         updateEncodings()
@@ -442,7 +452,7 @@ def draw_most_frequent_if_possible(required_blob_points,black_points_in_the_part
 
 
 def add_similar_blobs(index,target):
-    global globalLevels,img,mainRoot,add_blob_tried_position
+    global globalLevels,img,mainRoot,add_blob_tried_position,recent_auto_changes
     exit_protect_mode()
     sorted_parts = sortParts(mainRoot, 'area')
     level = sorted_parts[index]
@@ -594,14 +604,16 @@ def reduce_n_blobs(index,goal):
 
 def add_reduce_blobs(indices_of_parts,list_of_changes):
     global globalLevels,mainRoot
-    print indices_of_parts
+    if mainRoot is None or len(mainRoot.children) <= 0:
+        return
+
     for i in range(len(indices_of_parts)):
         index = indices_of_parts[i]
         goal = list_of_changes[i]
         if goal < 0:
             print "ERROR! goal is negetive"
         sorted_parts = sortParts(mainRoot, 'area')
-        print index,goal
+
         curr_children = len(sorted_parts[index].children)
         changes = goal - curr_children
         if changes == 0:
@@ -619,7 +631,7 @@ def add_reduce_blobs(indices_of_parts,list_of_changes):
                     sorted_parts = sortParts(mainRoot, 'area')
                     curr_children = len(sorted_parts[index].children)
         else:
-            print "reducing"
+            # print "reducing"
             reduce_n_blobs(index,goal)
 
 
@@ -649,53 +661,88 @@ def cost_params():
     return (cost_base, multipliers, prefVal)
 
 
+def str_format_recent_auto_changes():
+    global recent_auto_changes
+    out_str = ''
+    for entry in recent_auto_changes:
+        if entry[0] != 'add_shape':
+            out_str += str(entry) + ' '
+        else:
+            altered_pts = np.where(entry[1])
+            if altered_pts and altered_pts[0]:
+                top_left = (altered_pts[0][0],altered_pts[1][0])
+            else:
+                top_left = (-1,-1)
+            print_tuple = ('add_shape', top_left)
+            out_str += str(print_tuple) + ' '
+    return out_str
+
+
 def auto_fix_blobs(prefVal=0.0):
-    global mainRoot, targetBinString, targetDividers
+    global mainRoot, targetBinString, targetDividers, recent_auto_changes, currSuggestion
 
     if mainRoot is None or not mainRoot.children:
         print "Cannot fix blobs; No parts found"
         return
 
-    img_part_vals = []
-    sorted_parts = sortParts(mainRoot, 'area')
-    for part in sorted_parts:
-        img_part_vals.append(part.encoding)
-    cost_base, multipliers, _ = cost_params()
-
-    fixed_target = find_divisions(img_part_vals,targetBinString,exp_weight_cost_fun(cost_base, prefVal),multipliers)
-    if fixed_target is None or fixed_target[1] is None:
-        print "ERROR: Unable to find valid dividers"
-        return
-    target_part_vals = fixed_target[1]
-    set_target_dividers(fixed_target[2])
-
-    for i in range(len(sorted_parts)):
-        sorted_parts = sortParts(mainRoot, 'area')
-        sorted_parts[i].children = sortBlobs(sorted_parts[i], 'area')
-        counter = 0
-        max_count = 100
-        while img_part_vals[i] != target_part_vals[i] and counter < max_count:
-            sorted_parts = sortParts(mainRoot, 'area')
-            sorted_parts[i].children = sortBlobs(sorted_parts[i], 'area')
-            if img_part_vals[i] < target_part_vals[i]:
-                add_blob(sorted_parts[i])
-                img_part_vals[i] += 1
-            else:
-                delete_first_blob(sorted_parts[i])
-                img_part_vals[i] -= 1
-        if counter >= max_count:
-            print "ERROR: Fix blobs failed with too many attempts"
+    recent_auto_changes = []
+    perform_best_part_cuts()
+    set_target_dividers(currSuggestion[1][2])
+    add_reduce_blobs(list(range(len(currSuggestion[1][1]))), currSuggestion[1][1])
+    logEvent('auto_fix_blobs', str_format_recent_auto_changes())
     updateEncodings()
     updateVisualTargetPanel()
 
+
+    #returns ([(cut_length,(pt1),(pt2),part1.cNum,part2.cNum),
+#          (div_cost,[part_encodings],[divider_posns]),
+#          [(part_area,part_encoding,[former_part.cNums],multiplier,[former_part.centroids])]
+
+    # img_part_vals = []
+    # sorted_parts = sortParts(mainRoot, 'area')
+    # for part in sorted_parts:
+    #     img_part_vals.append(part.encoding)
+    # cost_base, multipliers, _ = cost_params()
+    #
+    # fixed_target = find_divisions(img_part_vals,targetBinString,exp_weight_cost_fun(cost_base, prefVal),multipliers)
+    # if fixed_target is None or fixed_target[1] is None:
+    #     print "ERROR: Unable to find valid dividers"
+    #     return
+    # target_part_vals = fixed_target[1]
+    # set_target_dividers(fixed_target[2])
+    #
+    # for i in range(len(sorted_parts)):
+    #     sorted_parts = sortParts(mainRoot, 'area')
+    #     sorted_parts[i].children = sortBlobs(sorted_parts[i], 'area')
+    #     counter = 0
+    #     max_count = 100
+    #     while img_part_vals[i] != target_part_vals[i] and counter < max_count:
+    #         sorted_parts = sortParts(mainRoot, 'area')
+    #         sorted_parts[i].children = sortBlobs(sorted_parts[i], 'area')
+    #         if img_part_vals[i] < target_part_vals[i]:
+    #             add_blob(sorted_parts[i])
+    #             img_part_vals[i] += 1
+    #         else:
+    #             delete_first_blob(sorted_parts[i])
+    #             img_part_vals[i] -= 1
+    #     if counter >= max_count:
+    #         print "ERROR: Fix blobs failed with too many attempts"
+    # updateEncodings()
+    # updateVisualTargetPanel()
+
 def auto_fix_blobs_btn(source='button'):
-    global addRemovePrefScale
+    global addRemovePrefScale, suggestMode
     exit_protect_mode()
-    prefVal = addRemovePrefScale.get()
-    prefVal = float(prefVal) / 20.0
-    auto_fix_blobs(prefVal)
+    if suggestMode == 0:
+        pass
+    elif suggestMode == 1:
+        updateSuggestion()
+    else:
+        prefVal = addRemovePrefScale.get()
+        prefVal = float(prefVal) / 20.0
+        auto_fix_blobs(prefVal)
     updateEncodings()
-    logEvent(source + 'auto_fix_blobs')
+    logEvent(source + 'auto_fix_blobs', suggestMode)
 
 def protect_btn(source='button'):
     global tool, protectBtn
@@ -1214,11 +1261,14 @@ def bestfs_part_reduction(max_nodes):
 
 
 def perform_best_part_cuts():
-    global img
-    best_cuts = bestfs_part_reduction(SUGGEST_NODES)[0]
+    global img, recent_auto_changes, currSuggestion
+    updateSuggestion()
+    best_cuts = currSuggestion[0]
     for cut in best_cuts:
+        recent_auto_changes.append(('cut_part', cut[1], cut[2], PART_CUT_WIDTH))
         cv2.line(img,cut[1],cut[2],WHITE,PART_CUT_WIDTH)
     updateEncodings()
+    logEvent('perform_best_cuts')
 
 
 def reduce_part(source='button'):
@@ -1234,13 +1284,16 @@ def sliderRelease(event):
     global suggestToggle
     if suggestToggle != 0:
         updateSuggestion()
-    updateEncodings()
     logEvent('sliderRelease', event.x, event.y)
 
 
 def updateSuggestion():
     global currSuggestion
     currSuggestion = bestfs_part_reduction(SUGGEST_NODES)
+    set_target_dividers(currSuggestion[1][2])
+    updateVisualTargetPanel()
+    updateEncodings()
+    logEvent('updateSuggestion', str(currSuggestion))
 
 
 def match_points_to_parts(pts):
@@ -1274,9 +1327,15 @@ def drawSuggestion():
         return
 
     cuts = currSuggestion[0]
-    for cut in cuts:
-        cv2.line(markedImg,cut[1],cut[2],RED,10)
-        #TODO: Detect when the cut has happened and use GREEN
+    first_cut_parts = match_points_to_parts([cut[1] for cut in cuts])
+    for i in range(len(cuts)):
+        cut = cuts[i]
+        part = first_cut_parts[i]
+        if part is not None and in_contour(cut[2][0], cut[2][1], part.contour, 0):
+            line_colour = GREEN
+        else:
+            line_colour = RED
+        cv2.line(markedImg,cut[1],cut[2],line_colour,8)
 
     centroid_lists = [info[4] for info in currSuggestion[2]]
     centroids = [l[0] for l in centroid_lists]
@@ -1296,14 +1355,12 @@ def drawSuggestion():
             else:
                 cv2.putText(markedImg, text, centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.5, RED, 2)
 
-    # cv2.putText(displayImage, binString, centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-    #
-    # for pair in ambiguousPairs:
-    #     contours = [pair[0].contour, pair[1].contour]
-    #     cv2.drawContours(displayImage, contours, -1, (0, 165, 255), 2)
-    #     cv2.circle(displayImage, pair[0].centroid, 3, (0, 165, 255), -1)
-    #     cv2.circle(displayImage, pair[1].centroid, 3, (0, 165, 255), -1)
-    #     cv2.line(displayImage, pair[0].centroid, pair[1].centroid, (0, 165, 255), 2)
+
+def drawFixes():
+    pass
+#returns ([(cut_length,(pt1),(pt2),part1.cNum,part2.cNum),
+#          (div_cost,[part_encodings],[divider_posns]),
+#          [(part_area,part_encoding,[former_part.cNums],multiplier,[former_part.centroids])]
 
 ##########################################
 
@@ -1351,7 +1408,8 @@ def determine_adjacent(point1, point2):
 def updateEncodingsForReal():
     global drawEncodings, drawCentroids, drawAmbToggle, suggestionIndex, suggestionImg, suggestions, \
         suggestionLocs, drawTargetToggle, img, markedImg, mainRoot, expPhase, blobMode, oldEncoding, \
-        blobOrderMode, blobIconDict, oldPartNum, globalLevels, usingThreading, oldEncodingNum, suggestToggle
+        blobOrderMode, blobIconDict, oldPartNum, globalLevels, usingThreading, oldEncodingNum, suggestToggle, \
+        suggestMode
     markedImg = img.copy()
 
     #find the region adjacency tree of the image
@@ -1418,7 +1476,12 @@ def updateEncodingsForReal():
             drawAmbiguities(levels, markedImg, blobOrderMode, partOrderMode)
 
     if suggestToggle != 0:
-        drawSuggestion()
+        if suggestMode == 0:
+            pass
+        elif suggestMode == 1:
+            drawSuggestion()
+        else:
+            drawFixes()
 
     #draw contours of region adjacency tree (hidden feature)
     if drawContoursToggle != 0:
@@ -1584,7 +1647,6 @@ def leftMouseUp(event):
         addUndoable()
         if suggestToggle != 0:
             updateSuggestion()
-            updateEncodings()
     logEvent('leftMouseUp', event.x, event.y)
 
 
@@ -1666,7 +1728,8 @@ def keyPress(event):
     elif event.char == 'Z':
         redo('keyboard')
     elif event.char == 'm' or event.char == 'M':
-        switchExpMode()
+        switchSuggestMode()
+        # switchExpMode()
     elif event.char == 'G':
         genNewTarget(10)
     elif event.char == 'H':
@@ -1742,8 +1805,17 @@ def switchExpMode():
 
     updateEncodings()
     updateMarkerModePanel()
+    updateSuggestionModePanel()
     updateVisualTargetPanel()
     logEvent('switchExpMode')
+
+
+def switchSuggestMode():
+    global suggestMode
+    suggestMode = (suggestMode+1)%3
+    updateSuggestion()
+    updateSuggestionModePanel()
+    logEvent('switchSuggestionMode')
 
 
 #returns the condition number associated with the current encoding scheme
@@ -1877,7 +1949,6 @@ def toggleSuggest(source='button'):
     suggestToggle = (suggestToggle + 1) % 2
     if suggestToggle != 0:
         updateSuggestion()
-    updateEncodings()
     updateSuggestPanel()
     logEvent(source + 'ToggleSuggest')
 
@@ -2257,6 +2328,18 @@ def updateMarkerModePanel():
         elif blobMode == 'convexityHollow' and blobOrderMode == 'distance' and partOrderMode == 'distance':
             newText += 'Dual/Dist/Dist'
     markerModePanel.configure(text=newText)
+
+
+def updateSuggestionModePanel():
+    global suggestMode, suggestionModePanel
+    newText = 'Suggestions: '
+    if suggestMode == 0:
+        newText += 'Off'
+    elif suggestMode == 1:
+        newText += 'Helper'
+    else:
+        newText += 'Auto-Complete'
+    suggestionModePanel.configure(text=newText)
 
 
 #updates the GUI element that displays the state of the labelling overlay
@@ -2994,6 +3077,7 @@ if __name__ == "__main__":
     levelsMutex = mutex.mutex()
     drawProtected = False
     currSuggestion = None
+    recent_auto_changes = []
 
     ellipsisImg = cv2.imread('ellipsis.png')
     ellipsisImg = Image.fromarray(ellipsisImg)
@@ -3177,6 +3261,10 @@ if __name__ == "__main__":
     markerModePanel = Label(text="Mode: Sketch'n'code", font=buttonTextFont, anchor='w')
     markerModePanel.place(x=1260, y=650, width=200, height=40)
     updateMarkerModePanel()
+
+    suggestionModePanel = Label(text="Suggestions: Off", font=buttonTextFont, anchor='w')
+    suggestionModePanel.place(x=1260, y=610, width=240, height=40)
+    updateSuggestionModePanel()
 
     labellerPanel = Label(text="Off", font=buttonTextFont)
     labellerPanel.place(x=1285, y=695, width=50, height=30)
