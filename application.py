@@ -672,14 +672,20 @@ def cost_params():
     protected_multiplier = 100
     sorted_parts = sortParts(mainRoot, 'area')
     multipliers = []
+    areas_remaining = []
     for part in sorted_parts:
         if part.protected:
             multipliers.append(protected_multiplier)
         else:
             multipliers.append(1)
+        area_remaining = part.area
+        if part.children is not None:
+            for child in part.children:
+                area_remaining -= child.area
+        areas_remaining.append(area_remaining)
     prefVal = addRemovePrefScale.get()
     prefVal = float(prefVal) / 20.0
-    return (cost_base, multipliers, prefVal)
+    return (cost_base, multipliers, prefVal, areas_remaining)
 
 
 def str_format_recent_auto_changes():
@@ -807,6 +813,7 @@ def toggle_blob_protection(x, y):
             selected.protected = True
             protected_centroids.append((x,y))
     # colour_protected()
+    updateSuggestion(SHORT_SEARCH)
     updateEncodings()
 
 def colour_protected():
@@ -841,12 +848,15 @@ def exit_select_mode():
     # drawProtected = False
 
 def reset_select_mode():
-    global tool, selectBtn, select_img,current_selected_blob,blob_image,click_points,image_wo_blob
+    global tool, selectBtn, select_img,current_selected_blob,blob_image,click_points,image_wo_blob, blob_moved
     # protectBtn.config(relief=RAISED)
     current_selected_blob = None
     blob_image = None
     image_wo_blob = None
     click_points = None
+    if blob_moved:
+        addUndoable()
+        blob_moved = False
     updateEncodings()
 
 def select_blob(x,y):
@@ -871,11 +881,12 @@ def select_blob(x,y):
         current_selected_blob = selected
 
 def remove_the_selected_blob():
-    global current_selected_blob,blob_image,img,image_wo_blob
+    global current_selected_blob,blob_image,img,image_wo_blob,blob_moved
 
     if current_selected_blob is None:
         pass
     else:
+        blob_moved = True
         bw_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         blob_image = np.full(bw_img.shape,0,dtype='uint8')
         bw_img_mask = bw_img < 100
@@ -1143,92 +1154,92 @@ def est_cut_area(pt1,pt2,width):
     return int(round(max((math.sqrt(square_dist(pt1,pt2))-EXTRA_CUT_LENGTH*2)*width,0)))
 
 
-def bfs_part_reduction(max_nodes):
-    global targetBinString, mainRoot
-    if mainRoot is None or len(mainRoot.children)<=0:
-        return []
-    ambig_factor = 1.0
-    sorted_parts = sortParts(mainRoot, 'area')
-    cost_base, multipliers, prefVal = cost_params()
-    possible_cuts = closest_point_pairs()
-    part_info = []
-    for i in range(len(sorted_parts)):
-        part = sorted_parts[i]
-        part_info.append([part.area,part.encoding,[part.cNum],multipliers[i]])
-    initial_div = find_divisions([i[1] for i in part_info],targetBinString,exp_weight_cost_fun(cost_base, prefVal),multipliers)
-    cuts_tried = {}
-    cuts_used = []
-    cuts_tried[tuple(cuts_used)] = (initial_div[0],part_info)
-    #root_state = (initial_div[0],part_info,[],0)
-    best_state = (cuts_used, initial_div)
-    q = deque([cuts_used])
-    num_nodes = 0
-
-    while q:
-        curr_cuts = q.popleft()
-        curr_info = cuts_tried[tuple(curr_cuts)][1]
-        if num_nodes > max_nodes:
-            break
-        else:
-            for i in range(len(possible_cuts)):
-                if i not in curr_cuts:
-                    new_cuts = curr_cuts[:] + [i]
-                    new_cuts.sort()
-                    if tuple(new_cuts) not in cuts_tried:
-                        new_info = []
-                        part_cut_1 = possible_cuts[i][3]
-                        part_cut_2 = possible_cuts[i][4]
-                        found_part = None
-                        cut_area = 0
-                        for curr_entry in curr_info:
-                            if part_cut_1 not in curr_entry[2] and part_cut_2 not in curr_entry[2]:
-                                new_info.append([curr_entry[0],curr_entry[1],curr_entry[2][:],curr_entry[3]])
-                            elif found_part is None:
-                                found_part = curr_entry
-                            else:
-                                cut_area = est_cut_area(possible_cuts[i][1],possible_cuts[i][2],PART_CUT_WIDTH)
-                                new_info.append([curr_entry[0]+found_part[0]+cut_area,
-                                                 curr_entry[1]+found_part[1],
-                                                 curr_entry[2]+found_part[2],
-                                                 max(curr_entry[3],found_part[3])])
-                        new_info.sort()
-                        ambiguous = False
-                        for i in range(len(new_info)):
-                            entry = new_info[i]
-                            if part_cut_1 in entry[2]:
-                                if i>=1 and abs(new_info[i-1][0] - entry[0]) < cut_area*ambig_factor:
-                                    ambiguous = True
-                                if i<len(new_info)-1 and abs(new_info[i+1][0] - entry[0]) < cut_area*ambig_factor:
-                                    ambiguous = True
-                        if ambiguous:
-                            cuts_tried[tuple(new_cuts)] = (None,new_info)
-                        else:
-                            new_div = find_divisions([i[1] for i in new_info],targetBinString, \
-                                                     exp_weight_cost_fun(cost_base, prefVal),[i[3] for i in new_info])
-                            if new_div is None:
-                                cuts_tried[tuple(new_cuts)] = (None,new_info)
-                            else:
-                                cuts_tried[tuple(new_cuts)] = (new_div[0],new_info)
-                                if new_div[0] < cuts_tried[tuple(best_state[0])][0]:
-                                    best_state = (new_cuts, new_div)
-                                q.append(new_cuts)
-            num_nodes += 1
-    final_cuts = []
-    for index in best_state[0]:
-        final_cuts.append(possible_cuts[index])
-    return (final_cuts, best_state[1])
+# def bfs_part_reduction(max_nodes):
+#     global targetBinString, mainRoot
+#     if mainRoot is None or len(mainRoot.children)<=0:
+#         return []
+#     ambig_factor = 1.0
+#     sorted_parts = sortParts(mainRoot, 'area')
+#     cost_base, multipliers, prefVal = cost_params()
+#     possible_cuts = closest_point_pairs()
+#     part_info = []
+#     for i in range(len(sorted_parts)):
+#         part = sorted_parts[i]
+#         part_info.append([part.area,part.encoding,[part.cNum],multipliers[i]])
+#     initial_div = find_divisions([i[1] for i in part_info],targetBinString,exp_weight_cost_fun(cost_base, prefVal),multipliers)
+#     cuts_tried = {}
+#     cuts_used = []
+#     cuts_tried[tuple(cuts_used)] = (initial_div[0],part_info)
+#     #root_state = (initial_div[0],part_info,[],0)
+#     best_state = (cuts_used, initial_div)
+#     q = deque([cuts_used])
+#     num_nodes = 0
+#
+#     while q:
+#         curr_cuts = q.popleft()
+#         curr_info = cuts_tried[tuple(curr_cuts)][1]
+#         if num_nodes > max_nodes:
+#             break
+#         else:
+#             for i in range(len(possible_cuts)):
+#                 if i not in curr_cuts:
+#                     new_cuts = curr_cuts[:] + [i]
+#                     new_cuts.sort()
+#                     if tuple(new_cuts) not in cuts_tried:
+#                         new_info = []
+#                         part_cut_1 = possible_cuts[i][3]
+#                         part_cut_2 = possible_cuts[i][4]
+#                         found_part = None
+#                         cut_area = 0
+#                         for curr_entry in curr_info:
+#                             if part_cut_1 not in curr_entry[2] and part_cut_2 not in curr_entry[2]:
+#                                 new_info.append([curr_entry[0],curr_entry[1],curr_entry[2][:],curr_entry[3]])
+#                             elif found_part is None:
+#                                 found_part = curr_entry
+#                             else:
+#                                 cut_area = est_cut_area(possible_cuts[i][1],possible_cuts[i][2],PART_CUT_WIDTH)
+#                                 new_info.append([curr_entry[0]+found_part[0]+cut_area,
+#                                                  curr_entry[1]+found_part[1],
+#                                                  curr_entry[2]+found_part[2],
+#                                                  max(curr_entry[3],found_part[3])])
+#                         new_info.sort()
+#                         ambiguous = False
+#                         for i in range(len(new_info)):
+#                             entry = new_info[i]
+#                             if part_cut_1 in entry[2]:
+#                                 if i>=1 and abs(new_info[i-1][0] - entry[0]) < cut_area*ambig_factor:
+#                                     ambiguous = True
+#                                 if i<len(new_info)-1 and abs(new_info[i+1][0] - entry[0]) < cut_area*ambig_factor:
+#                                     ambiguous = True
+#                         if ambiguous:
+#                             cuts_tried[tuple(new_cuts)] = (None,new_info)
+#                         else:
+#                             new_div = find_divisions([i[1] for i in new_info],targetBinString, \
+#                                                      exp_weight_cost_fun(cost_base, prefVal),[i[3] for i in new_info])
+#                             if new_div is None:
+#                                 cuts_tried[tuple(new_cuts)] = (None,new_info)
+#                             else:
+#                                 cuts_tried[tuple(new_cuts)] = (new_div[0],new_info)
+#                                 if new_div[0] < cuts_tried[tuple(best_state[0])][0]:
+#                                     best_state = (new_cuts, new_div)
+#                                 q.append(new_cuts)
+#             num_nodes += 1
+#     final_cuts = []
+#     for index in best_state[0]:
+#         final_cuts.append(possible_cuts[index])
+#     return (final_cuts, best_state[1])
 
 
 #returns ([(cut_length,(pt1),(pt2),part1.cNum,part2.cNum),
 #          (div_cost,[part_encodings],[divider_posns]),
-#          [(part_area,part_encoding,[former_part.cNums],multiplier,[former_part.centroids])]
+#          [(part_area,part_encoding,[former_part.cNums],multiplier,[former_part.centroids],area_remaining)]
 def bestfs_part_reduction(max_time):
     global targetBinString, mainRoot
     if mainRoot is None or len(mainRoot.children)<=0:
         return []
     ambig_factor = 1.0
     sorted_parts = sortParts(mainRoot, 'area')
-    cost_base, multipliers, prefVal = cost_params()
+    cost_base, multipliers, prefVal, areas_remaining = cost_params()
     possible_cuts = closest_point_pairs()
     part_info = []
     for i in range(len(sorted_parts)):
@@ -1237,8 +1248,8 @@ def bestfs_part_reduction(max_time):
             point_in_contour = part.centroid
         else:
             point_in_contour = tuple(part.contour[0][0])
-        part_info.append([part.area,part.encoding,[part.cNum],multipliers[i],[point_in_contour]])
-    initial_div = find_divisions([i[1] for i in part_info],targetBinString,exp_weight_cost_fun(cost_base, prefVal),multipliers)
+        part_info.append([part.area,part.encoding,[part.cNum],multipliers[i],[point_in_contour],areas_remaining[i]])
+    initial_div = find_divisions([i[1] for i in part_info],targetBinString,exp_weight_cost_fun(cost_base, prefVal),multipliers,areas_remaining)
     cuts_tried = {}
     cuts_used = []
     cuts_tried[tuple(cuts_used)] = (initial_div[0],part_info)
@@ -1267,7 +1278,8 @@ def bestfs_part_reduction(max_time):
                         cut_area = 0
                         for curr_entry in curr_info:
                             if part_cut_1 not in curr_entry[2] and part_cut_2 not in curr_entry[2]:
-                                new_info.append([curr_entry[0],curr_entry[1],curr_entry[2][:],curr_entry[3],curr_entry[4][:]])
+                                new_info.append([curr_entry[0],curr_entry[1],curr_entry[2][:],curr_entry[3], \
+                                                 curr_entry[4][:], curr_entry[5]])
                             elif found_part is None:
                                 found_part = curr_entry
                             else:
@@ -1276,7 +1288,8 @@ def bestfs_part_reduction(max_time):
                                                  curr_entry[1]+found_part[1],
                                                  curr_entry[2]+found_part[2],
                                                  max(curr_entry[3],found_part[3]),
-                                                 curr_entry[4]+found_part[4]])
+                                                 curr_entry[4]+found_part[4],
+                                                 curr_entry[5]+found_part[5]])
                         new_info.sort()
                         ambiguous = False
                         for i in range(len(new_info)):
@@ -1290,7 +1303,8 @@ def bestfs_part_reduction(max_time):
                             cuts_tried[tuple(new_cuts)] = (None,new_info)
                         else:
                             new_div = find_divisions([i[1] for i in new_info],targetBinString, \
-                                                     exp_weight_cost_fun(cost_base, prefVal),[i[3] for i in new_info])
+                                                     exp_weight_cost_fun(cost_base, prefVal), \
+                                                     [i[3] for i in new_info], [i[5] for i in new_info])
                             if new_div is None:
                                 cuts_tried[tuple(new_cuts)] = (None,new_info)
                             else:
@@ -2016,10 +2030,14 @@ def toggleOrder(source='button'):
     #     drawCentroids = (drawCentroids + 1) % 2
     # else:
     #     drawCentroids = (drawCentroids + 1) % 3
-    if expPhase == 2:
-        drawCentroids = (drawCentroids + 1) % 2
-    elif expPhase == 3:
-        drawCentroids = (drawCentroids + 1) % 3
+
+    #From original code
+    # if expPhase == 2:
+    #     drawCentroids = (drawCentroids + 1) % 2
+    # elif expPhase == 3:
+    #     drawCentroids = (drawCentroids + 1) % 3
+
+    drawCentroids = (drawCentroids + 1) % 2
     updateEncodings()
     updateOrderPanel()
     logEvent(source + 'ToggleOrder')
@@ -2045,8 +2063,11 @@ def toggleLabeller(source='button'):
     #     drawEncodings = (drawEncodings + 1) % 3
     # else:
     #     drawEncodings = (drawEncodings + 1) % 4
-    if expPhase == 1 or expPhase == 2 or expPhase == 3:
-        drawEncodings = (drawEncodings + 1) % 3
+
+    #From original code
+    # if expPhase == 1 or expPhase == 2 or expPhase == 3:
+    #     drawEncodings = (drawEncodings + 1) % 3
+    drawEncodings = (drawEncodings + 1) % 2
     updateEncodings()
     updateLabellerPanel()
     logEvent(source + 'ToggleLabeller')
@@ -2064,12 +2085,13 @@ def clearRootAndLevels():
 
 #clears the current canvas (reset to white)
 def clearCanvas(source='button'):
-    global img, markedImg, suggestionTopString, globalLevels, mainRoot
+    global img, markedImg, suggestionTopString, globalLevels, mainRoot, protected_centroids
     exit_protect_mode()
     exit_select_mode()
     img = np.ones((CANVAS_HEIGHT, CANVAS_WIDTH, 3), np.uint8) * 255
     markedImg = img.copy()
     suggestionTopString = ""
+    protected_centroids = []
     resetSuggestions()
     clearRootAndLevels()
     updateEncodings()
@@ -2443,18 +2465,24 @@ def updateSuggestionModePanel():
 def updateLabellerPanel():
     global labellerPanel, drawEncodings, expPhase
 
-    if expPhase == 1:
-        if drawEncodings == 0:
-            newText = 'Off'
-        elif drawEncodings == 1:
-            newText = 'On'
-    elif expPhase == 2 or expPhase == 3:
-        if drawEncodings == 0:
-            newText = 'Off'
-        elif drawEncodings == 1:
-            newText = 'Part'
-        elif drawEncodings == 2:
-            newText = 'Blob'
+    #From original code
+    # if expPhase == 1:
+    #     if drawEncodings == 0:
+    #         newText = 'Off'
+    #     elif drawEncodings == 1:
+    #         newText = 'On'
+    # elif expPhase == 2 or expPhase == 3:
+    #     if drawEncodings == 0:
+    #         newText = 'Off'
+    #     elif drawEncodings == 1:
+    #         newText = 'Part'
+    #     elif drawEncodings == 2:
+    #         newText = 'Blob'
+
+    if drawEncodings == 0:
+        newText = 'Off'
+    elif drawEncodings == 1:
+        newText = 'On'
     labellerPanel.configure(text=newText)
 
 
@@ -2462,14 +2490,19 @@ def updateLabellerPanel():
 def updateOrderPanel():
     global orderPanel, drawCentroids, markerMode, expPhase
     newText = 'Off'
-    if drawCentroids != 0 and expPhase == 2:
-        # if markerMode == 'dtouch' or drawCentroids == 2:
-        newText = 'Blob'
-    elif expPhase == 3:
-        if drawCentroids == 1:
-            newText = 'Part'
-        elif drawCentroids == 2:
-            newText = 'Blob'
+
+    #From original code
+    # if drawCentroids != 0 and expPhase == 2:
+    #     # if markerMode == 'dtouch' or drawCentroids == 2:
+    #     newText = 'Blob'
+    # elif expPhase == 3:
+    #     if drawCentroids == 1:
+    #         newText = 'Part'
+    #     elif drawCentroids == 2:
+    #         newText = 'Blob'
+
+    if drawCentroids == 1:
+        newText = 'On'
     orderPanel.configure(text=newText)
 
 
@@ -3176,6 +3209,7 @@ if __name__ == "__main__":
     currSuggestion = None
     recent_auto_changes = []
     protected_centroids = []
+    blob_moved = False
 
     ellipsisImg = cv2.imread('ellipsis.png')
     ellipsisImg = Image.fromarray(ellipsisImg)

@@ -30,10 +30,17 @@ def get_bit_value(bits):
         value = binaryStringToDec(bits)[0]
     return value
 
+def est_area_multiplier(num_additions, area_remaining):
+    min_area_per_blob = 3000
+    if area_remaining < num_additions*min_area_per_blob:
+        return 100000
+    else:
+        return 1
+
 #for the given part structure (part_vals), target bitstring, and cost function,
 #find the divisions of the target that produce the lowest cost when compared to part_vals
 #output of the form [cost_value, [list of part values], [list of divider posns (divider comes after the posn)]]
-def find_divisions(part_vals, bitstring, cost_fun, multipliers=None):
+def find_divisions(part_vals, bitstring, cost_fun, multipliers=None, areas_remaining=None):
     num_dividers = len(part_vals) - 1
     num_posns = len(bitstring) - 1
     costs = [[None for _ in range(num_posns)] for _ in range(num_dividers)]
@@ -44,7 +51,11 @@ def find_divisions(part_vals, bitstring, cost_fun, multipliers=None):
     if num_dividers <= 0:
         bit_val = get_bit_value(bitstring)
         if num_dividers == 0 and bit_val is not None:
-            return [cost_fun(part_vals[0],bit_val)*multipliers[0], [bit_val], []]
+            if areas_remaining is not None:
+                area_multiplier = est_area_multiplier(bit_val-part_vals[0],areas_remaining[0])
+            else:
+                area_multiplier = 1
+            return [cost_fun(part_vals[0],bit_val)*multipliers[0]*area_multiplier, [bit_val], []]
         else:
             return None
 
@@ -53,15 +64,25 @@ def find_divisions(part_vals, bitstring, cost_fun, multipliers=None):
         if num_dividers > 1:
             bit_val = get_bit_value(bitstring[:(i+1)])
             if bit_val is not None:
-                costs[0][i] = [cost_fun(part_vals[0],bit_val)*multipliers[0], [bit_val], [i]]
+                if areas_remaining is not None:
+                    area_multiplier = est_area_multiplier(bit_val-part_vals[0],areas_remaining[0])
+                else:
+                    area_multiplier = 1
+                costs[0][i] = [cost_fun(part_vals[0],bit_val)*multipliers[0]*area_multiplier, [bit_val], [i]]
             else:
                 costs[0][i] = None
         else: #special case if there is only 1 divider
             bit_val_1 = get_bit_value(bitstring[:(i+1)])
             bit_val_2 = get_bit_value(bitstring[(i+1):])
             if bit_val_1 is not None and bit_val_2 is not None:
-                cost_1 = cost_fun(part_vals[0],bit_val_1)*multipliers[0]
-                cost_2 = cost_fun(part_vals[1],bit_val_2)*multipliers[1]
+                if areas_remaining is not None:
+                    area_multiplier_1 = est_area_multiplier(bit_val_1-part_vals[0],areas_remaining[0])
+                    area_multiplier_2 = est_area_multiplier(bit_val_2-part_vals[1],areas_remaining[1])
+                else:
+                    area_multiplier_1 = 1
+                    area_multiplier_2 = 1
+                cost_1 = cost_fun(part_vals[0],bit_val_1)*multipliers[0]*area_multiplier_1
+                cost_2 = cost_fun(part_vals[1],bit_val_2)*multipliers[1]*area_multiplier_2
                 costs[0][i] = [cost_1+cost_2, [bit_val_1,bit_val_2], [i]]
 
     #fill all other columns of costs
@@ -73,7 +94,11 @@ def find_divisions(part_vals, bitstring, cost_fun, multipliers=None):
                 if i < num_dividers-1:
                     bit_val = get_bit_value(bitstring[k+1:j+1])
                     if bit_val is not None:
-                        extend_cost = cost_fun(part_vals[i],bit_val)*multipliers[i]
+                        if areas_remaining is not None:
+                            area_multiplier = est_area_multiplier(bit_val-part_vals[i],areas_remaining[i])
+                        else:
+                            area_multiplier = 1
+                        extend_cost = cost_fun(part_vals[i],bit_val)*multipliers[i]*area_multiplier
                     else:
                         extend_cost = None
                     bit_val = [bit_val]
@@ -81,8 +106,14 @@ def find_divisions(part_vals, bitstring, cost_fun, multipliers=None):
                     bit_val_1 = get_bit_value(bitstring[k+1:j+1])
                     bit_val_2 = get_bit_value(bitstring[j+1:])
                     if bit_val_1 is not None and bit_val_2 is not None:
-                        extend_cost_1 = cost_fun(part_vals[i],bit_val_1)*multipliers[i]
-                        extend_cost_2 = cost_fun(part_vals[i+1],bit_val_2)*multipliers[i+1]
+                        if areas_remaining is not None:
+                            area_multiplier_1 = est_area_multiplier(bit_val_1-part_vals[i],areas_remaining[i])
+                            area_multiplier_2 = est_area_multiplier(bit_val_2-part_vals[i+1],areas_remaining[i+1])
+                        else:
+                            area_multiplier_1 = 1
+                            area_multiplier_2 = 1
+                        extend_cost_1 = cost_fun(part_vals[i],bit_val_1)*multipliers[i]*area_multiplier_1
+                        extend_cost_2 = cost_fun(part_vals[i+1],bit_val_2)*multipliers[i+1]*area_multiplier_2
                         extend_cost = extend_cost_1 + extend_cost_2
                     else:
                         extend_cost = None
