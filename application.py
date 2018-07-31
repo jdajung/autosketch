@@ -348,18 +348,18 @@ def split_blob(part):
 
 ###### Add a most frequent occuring blob #######
 
-def check_if_blob_inside(sampled_x,sampled_y,part_contour):
+def check_if_blob_inside(points,part_contour):
     # if in_contour(sampled_x,sampled_y,part_contour,3,radius_multiplier=3):
     #     return True
 
-    radius_multiplier = 1
     distance = 10
-    ret = cv2.pointPolygonTest(part_contour, (sampled_x, sampled_y), True)
-    # print sampled_x,sampled_y,ret
-    # x = input()
-    if ret < (radius_multiplier*distance):
-        # print("Failed in in_contour")
-        return False
+    for point in points:
+        ret = cv2.pointPolygonTest(part_contour, (point[0][0], point[0][1]), True)
+        # print sampled_x,sampled_y,ret
+        # x = input()
+        if ret < (distance):
+            # print("Failed in in_contour")
+            return False
 
     return True
 
@@ -406,8 +406,7 @@ def draw_most_frequent_if_possible(required_blob_points,black_points_in_the_part
             extreme_top = tuple(new_points_for_blob[new_points_for_blob[:,  1].argmin()]) # extreme_top
             extreme_bottom = tuple(new_points_for_blob[new_points_for_blob[:, 1].argmax()]) # extreme_bottom
 
-            if check_if_blob_inside(*extreme_left,part_contour=level.contour) and check_if_blob_inside(*extreme_right,part_contour=level.contour) \
-                and check_if_blob_inside(*extreme_top,part_contour=level.contour) and check_if_blob_inside(*extreme_bottom,part_contour=level.contour):
+            if check_if_blob_inside(cv2.approxPolyDP(np.expand_dims(new_points_for_blob,axis = 1), 0.002 * cv2.arcLength(np.expand_dims(new_points_for_blob,axis = 1), True), True),part_contour=level.contour):
 
                 filtered_points = list(filter(lambda x : x in black_points_in_the_part,new_points_for_blob.tolist()))
                 if len(filtered_points) == 0:
@@ -566,7 +565,7 @@ def add_similar_blobs(index,target):
         left_limit = extreme_left_part[0]
         top_limit = extreme_top_part[1]
         bottom_limit = extreme_bottom_part[1] - (extreme_bottom[1] - extreme_top[1])
-        black_points_in_the_part = [point[0].tolist() for child in level.children for point in child.contour] + [point[0].tolist() for point in level.contour]
+        black_points_in_the_part = [point[0].tolist() for child in level.children for point in child.contour]
         
         required_blob_points2 = np.array(required_blob_points)
         required_blob_points2[:,0] += extreme_left_part[0] - extreme_left[0]
