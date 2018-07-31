@@ -704,6 +704,7 @@ def auto_fix_blobs(prefVal=0.0):
     set_target_dividers(currSuggestion[1][2])
     add_reduce_blobs(list(range(len(currSuggestion[1][1]))), currSuggestion[1][1])
     logEvent('auto_fix_blobs', str_format_recent_auto_changes())
+    addUndoable()
     updateEncodings()
     updateVisualTargetPanel()
 
@@ -829,11 +830,7 @@ def exit_select_mode():
     # protectBtn.config(relief=RAISED)
     selectBtn.config(relief=RAISED)
     tool = 'pen'
-    current_selected_blob = None
-    blob_image = None
-    image_wo_blob = None
-    click_points = None
-    updateEncodings()
+    reset_select_mode()
     # drawProtected = False
 
 def reset_select_mode():
