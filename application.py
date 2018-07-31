@@ -566,7 +566,7 @@ def add_similar_blobs(index,target):
         left_limit = extreme_left_part[0]
         top_limit = extreme_top_part[1]
         bottom_limit = extreme_bottom_part[1] - (extreme_bottom[1] - extreme_top[1])
-        black_points_in_the_part = [point[0].tolist() for child in level.children for point in child.contour]
+        black_points_in_the_part = [point[0].tolist() for child in level.children for point in child.contour] + [point[0].tolist() for point in level.contour]
         
         required_blob_points2 = np.array(required_blob_points)
         required_blob_points2[:,0] += extreme_left_part[0] - extreme_left[0]
