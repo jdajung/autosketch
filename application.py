@@ -44,7 +44,9 @@ RED = (0,0,255)
 DARK_RED = (34,34,178)
 ORANGE = (0, 165, 255)
 PART_CUT_WIDTH = 3
-SUGGEST_NODES = 200
+# SUGGEST_NODES = 200
+SHORT_SEARCH = 0.1
+LONG_SEARCH = 2.0
 EXTRA_CUT_LENGTH = 10
 
 #global variables
@@ -616,9 +618,15 @@ def reduce_n_blobs(index,goal):
 
 
 def add_reduce_blobs(indices_of_parts,list_of_changes):
-    global globalLevels,mainRoot
+    global globalLevels,mainRoot, currSuggestion
     if mainRoot is None or len(mainRoot.children) <= 0:
         return
+
+    if len(mainRoot.children) != max(indices_of_parts)+1:
+        updateSuggestion(SHORT_SEARCH)
+        indices_of_parts = list(range(len(currSuggestion[1][1])))
+        list_of_changes = currSuggestion[1][1]
+        print "ERROR: parts have changed for add_reduce_blobs"
 
     for i in range(len(indices_of_parts)):
         index = indices_of_parts[i]
@@ -751,7 +759,7 @@ def auto_fix_blobs_btn(source='button'):
     if suggestMode == 0:
         pass
     elif suggestMode == 1:
-        updateSuggestion()
+        updateSuggestion(LONG_SEARCH)
     else:
         prefVal = addRemovePrefScale.get()
         prefVal = float(prefVal) / 20.0
@@ -1214,7 +1222,7 @@ def bfs_part_reduction(max_nodes):
 #returns ([(cut_length,(pt1),(pt2),part1.cNum,part2.cNum),
 #          (div_cost,[part_encodings],[divider_posns]),
 #          [(part_area,part_encoding,[former_part.cNums],multiplier,[former_part.centroids])]
-def bestfs_part_reduction(max_nodes):
+def bestfs_part_reduction(max_time):
     global targetBinString, mainRoot
     if mainRoot is None or len(mainRoot.children)<=0:
         return []
@@ -1236,13 +1244,15 @@ def bestfs_part_reduction(max_nodes):
     cuts_tried[tuple(cuts_used)] = (initial_div[0],part_info)
     best_state = (cuts_used, initial_div, part_info)
     num_nodes = 0
+    start_time = time.time()
     q = [(initial_div[0], cuts_used)]
     heapq.heapify(q)
 
     while q:
         curr_cuts = heapq.heappop(q)[1]
         curr_info = cuts_tried[tuple(curr_cuts)][1]
-        if num_nodes > max_nodes:
+        # if num_nodes > max_nodes:
+        if time.time() - start_time > max_time:
             break
         else:
             for i in range(len(possible_cuts)):
@@ -1290,6 +1300,7 @@ def bestfs_part_reduction(max_nodes):
                                 heapq.heappush(q,(new_div[0],new_cuts))
             num_nodes += 1
     final_cuts = []
+    print "Searched " + str(num_nodes) + " nodes"
     for index in best_state[0]:
         final_cuts.append(possible_cuts[index])
     return (final_cuts, best_state[1], best_state[2])
@@ -1297,7 +1308,7 @@ def bestfs_part_reduction(max_nodes):
 
 def perform_best_part_cuts():
     global img, recent_auto_changes, currSuggestion
-    updateSuggestion()
+    updateSuggestion(LONG_SEARCH)
     best_cuts = currSuggestion[0]
     for cut in best_cuts:
         recent_auto_changes.append(('cut_part', cut[1], cut[2], PART_CUT_WIDTH))
@@ -1319,13 +1330,13 @@ def reduce_part(source='button'):
 def sliderRelease(event):
     global suggestToggle
     if suggestToggle != 0:
-        updateSuggestion()
+        updateSuggestion(SHORT_SEARCH)
     logEvent('sliderRelease', event.x, event.y)
 
 
-def updateSuggestion():
+def updateSuggestion(time=SHORT_SEARCH):
     global currSuggestion
-    currSuggestion = bestfs_part_reduction(SUGGEST_NODES)
+    currSuggestion = bestfs_part_reduction(time)
     if currSuggestion:
         set_target_dividers(currSuggestion[1][2])
         updateVisualTargetPanel()
@@ -1716,7 +1727,7 @@ def leftMouseUp(event):
         lastY = -1
         addUndoable()
         if suggestToggle != 0:
-            updateSuggestion()
+            updateSuggestion(SHORT_SEARCH)
     logEvent('leftMouseUp', event.x, event.y)
 
 
@@ -1883,7 +1894,7 @@ def switchExpMode():
 def switchSuggestMode():
     global suggestMode
     suggestMode = (suggestMode+1)%3
-    updateSuggestion()
+    updateSuggestion(SHORT_SEARCH)
     updateSuggestionModePanel()
     logEvent('switchSuggestionMode')
 
@@ -2018,7 +2029,7 @@ def toggleSuggest(source='button'):
     global suggestToggle
     suggestToggle = (suggestToggle + 1) % 2
     if suggestToggle != 0:
-        updateSuggestion()
+        updateSuggestion(SHORT_SEARCH)
     else:
         updateEncodings()
     updateSuggestPanel()
