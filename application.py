@@ -759,7 +759,8 @@ def auto_fix_blobs(prefVal=0.0):
     # updateVisualTargetPanel()
 
 def auto_fix_blobs_btn(source='button'):
-    global addRemovePrefScale, suggestMode
+    global addRemovePrefScale, suggestMode, fixBlobBtn
+    fixBlobBtn.config(relief=SUNKEN)
     exit_protect_mode()
     exit_select_mode()
     if suggestMode == 0:
@@ -771,6 +772,7 @@ def auto_fix_blobs_btn(source='button'):
         prefVal = float(prefVal) / 20.0
         auto_fix_blobs(prefVal)
     updateEncodings()
+    fixBlobBtn.config(relief=RAISED)
     logEvent(source + 'auto_fix_blobs', suggestMode)
 
 def protect_btn(source='button'):
@@ -781,7 +783,7 @@ def protect_btn(source='button'):
     else:
         protectBtn.config(relief=SUNKEN)
         tool = 'protect'
-    logEvent(source + 'protect_toggle')
+    logEvent(source + 'protect_toggle', tool)
 
 def exit_protect_mode():
     global tool, protectBtn, protectImg, drawProtected
@@ -1314,7 +1316,7 @@ def bestfs_part_reduction(max_time):
                                 heapq.heappush(q,(new_div[0],new_cuts))
             num_nodes += 1
     final_cuts = []
-    print "Searched " + str(num_nodes) + " nodes"
+    # print "Searched " + str(num_nodes) + " nodes"
     for index in best_state[0]:
         final_cuts.append(possible_cuts[index])
     return (final_cuts, best_state[1], best_state[2])
@@ -1342,10 +1344,10 @@ def reduce_part(source='button'):
 
 
 def sliderRelease(event):
-    global suggestToggle
+    global suggestToggle, addRemovePrefScale
     if suggestToggle != 0:
         updateSuggestion(SHORT_SEARCH)
-    logEvent('sliderRelease', event.x, event.y)
+    logEvent('sliderRelease', addRemovePrefScale.get())
 
 
 def updateSuggestion(time=SHORT_SEARCH):
@@ -1462,6 +1464,14 @@ def determine_adjacent(point1, point2):
     while True:
         new_x = distance*np.cos(angle) + point1[0]
         new_y = distance*np.sin(angle) + point1[1]
+        if new_x < 0:
+            new_x = 0
+        if new_x > CANVAS_WIDTH-1:
+            x = CANVAS_WIDTH - 1
+        if new_y < 0:
+            new_y = 0
+        if new_y > CANVAS_HEIGHT-1:
+            new_y = CANVAS_HEIGHT-1
         val = bw[int(np.round(new_y)),int(np.round(new_x))]
         if  val == 255:
             if nb == 0:
@@ -1692,13 +1702,15 @@ def addUndoable():
 
 #perform one undo action on the canvas
 def undo(source='button'):
-    global undoStack, undoIndex, img
+    global undoStack, undoIndex, img, suggestToggle
     exit_protect_mode()
     exit_select_mode()
     if undoIndex < len(undoStack)-1:
         img = np.copy(undoStack[undoIndex+1])
         undoIndex += 1
         updateEncodings()
+        if suggestToggle != 0:
+            updateSuggestion(SHORT_SEARCH)
     logEvent(source + 'Undo')
 
 
@@ -1724,12 +1736,12 @@ def leftMouseDown(event):
     else:
         mode = 'drawing'
         drawStuff(event.x, event.y)
-    logEvent('leftMouseDown', event.x, event.y)
+    logEvent('leftMouseDown-'+tool, event.x, event.y)
 
 
 #handles mouse releases
 def leftMouseUp(event):
-    global lastX, lastY, tool, suggestToggle
+    global lastX, lastY, tool, suggestToggle, protected_centroids
     if tool == 'protect':
         pass
     elif tool == 'select':
@@ -1742,7 +1754,10 @@ def leftMouseUp(event):
         addUndoable()
         if suggestToggle != 0:
             updateSuggestion(SHORT_SEARCH)
-    logEvent('leftMouseUp', event.x, event.y)
+    if tool == 'protect':
+        logEvent('leftMouseUp-'+tool, event.x, event.y, protected_centroids)
+    else:
+        logEvent('leftMouseUp-'+tool, event.x, event.y)
 
 
 #handles mouse dragging while clicked
@@ -1754,7 +1769,7 @@ def leftMouseMove(event):
         move_selected(event.x,event.y)
     else:
         drawStuff(event.x, event.y)
-    logEvent('leftMouseMove', event.x, event.y)
+    logEvent('leftMouseMove-'+tool, event.x, event.y)
 
 
 #handles keyboard inputs
@@ -2279,10 +2294,10 @@ def largeWhiteBrush():
 
 
 #adds an event to the text log
-#events have a name and up to 2 numerical values
-def logEvent(eventName, x=-1, y=-1):
+#events have a name and up to 3 other values
+def logEvent(eventName, x=-1, y=-1, z=-1):
     global logFile
-    logString = str(datetime.datetime.now()) + ' ' + eventName + ' ' + str(x) + ' ' + str(y) + '\n'
+    logString = str(datetime.datetime.now()) + ' ' + eventName + ' ' + str(x) + ' ' + str(y) + ' ' + str(z) + '\n'
     logFile.write(logString)
 
 
