@@ -299,14 +299,20 @@ def join_blobs(source='button'):
             join_2_points(*pairs)
             # blob_with_min_area = min(level.children,key = lambda x: x.area)
 
-###### Join a Blob to the nearest edge #####
-def join_blob_and_edge(level):
+###### Join a Blob to the nearest edge or blob #####
+def join_blob_and_edge(level,sorted_parts):
+    global index
     wanted_pair = None
     min_dist = None
     description = ""
+    curr_blob = None
     if len(level.children) == 1 and len(level.children[0].children) > 0:
         delete_blob(level.children[0])
         return
+    if index > 0:
+        previous_area = sorted_parts[index - 1].area
+    else:
+        previous_area = 0
     for blob in level.children:
         if len(blob.children) > 0:
             continue
@@ -315,10 +321,15 @@ def join_blob_and_edge(level):
             min_dist = dist
             wanted_pair = pairs
             description = "join_to_edge"
+            curr_blob = blob
         elif dist < min_dist:
             min_dist = dist
             wanted_pair = pairs
+            curr_blob = blob
             description = "join_to_edge"
+    if level.area - (3*min_dist + curr_blob.area) <= previous_area: #2 is the thickness of the line
+        min_dist = None
+        wanted_pair = None
     if level.children > 1:
         for combo in itertools.combinations(level.children,2):
             pairs,dist = closest_pair_of_points_between_blobs(*combo)
@@ -330,6 +341,9 @@ def join_blob_and_edge(level):
                 min_dist = dist
                 wanted_pair = pairs
                 description = "join_blobs"
+    if wanted_pair is None and len(level.children)  == 1:
+        delete_blob(level.children[0])
+
     join_2_points(wanted_pair[0], wanted_pair[1], 2)
     recent_auto_changes.append((description, tuple(wanted_pair[0][0]), tuple(wanted_pair[1][0]), 2))
 
@@ -611,14 +625,14 @@ def reduce_n_blobs(index,goal):
     sorted_parts = sortParts(mainRoot, 'area')
     current_children = len(sorted_parts[index].children)
     while current_children > goal:
-        join_blob_and_edge(sorted_parts[index])
+        join_blob_and_edge(sorted_parts[index],sorted_parts)
         sorted_parts = sortParts(mainRoot, 'area')
         current_children += -1
 
 
 
 def add_reduce_blobs(indices_of_parts,list_of_changes):
-    global globalLevels,mainRoot, currSuggestion
+    global globalLevels,mainRoot, currSuggestion, index
     if mainRoot is None or len(mainRoot.children) <= 0:
         return
 
