@@ -343,9 +343,9 @@ def join_blob_and_edge(level,sorted_parts):
                 description = "join_blobs"
     if wanted_pair is None and len(level.children)  == 1:
         delete_blob(level.children[0])
-
-    join_2_points(wanted_pair[0], wanted_pair[1], 2)
-    recent_auto_changes.append((description, tuple(wanted_pair[0][0]), tuple(wanted_pair[1][0]), 2))
+    else:
+        join_2_points(wanted_pair[0], wanted_pair[1], 2)
+        recent_auto_changes.append((description, tuple(wanted_pair[0][0]), tuple(wanted_pair[1][0]), 2))
 
 def join_blob_to_edge(source='button'):
     # exit_protect_mode()
@@ -706,9 +706,13 @@ def str_format_recent_auto_changes():
     global recent_auto_changes
     out_str = ''
     for entry in recent_auto_changes:
-        if entry[0] != 'add_shape':
-            out_str += str(entry) + ' '
-        else:
+        if entry[0] == 'delete_blob':
+            if entry[1] is not None and len(entry[1]) > 0:
+                print_tuple = ('delete_blob', tuple(entry[1][0,0]))
+            else:
+                print_tuple = ('delete_blob', None)
+            out_str += str(print_tuple) + ' '
+        elif entry[0] == 'add_shape':
             altered_pts = np.where(entry[1])
             if len(altered_pts)>0 and len(altered_pts[0])>0:
                 top_left = (altered_pts[0][0],altered_pts[1][0])
@@ -716,6 +720,8 @@ def str_format_recent_auto_changes():
                 top_left = (-1,-1)
             print_tuple = ('add_shape', top_left)
             out_str += str(print_tuple) + ' '
+        else:
+            out_str += str(entry) + ' '
     return out_str
 
 
