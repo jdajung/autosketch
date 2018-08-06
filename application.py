@@ -327,9 +327,10 @@ def join_blob_and_edge(level,sorted_parts):
             wanted_pair = pairs
             curr_blob = blob
             description = "join_to_edge"
-    if level.area - (3*min_dist + curr_blob.area) <= previous_area: #2 is the thickness of the line
-        min_dist = None
-        wanted_pair = None
+    if min_dist is not None:
+        if level.area - (3*min_dist + curr_blob.area) <= previous_area: #2 is the thickness of the line
+            min_dist = None
+            wanted_pair = None
     if level.children > 1:
         for combo in itertools.combinations(level.children,2):
             pairs,dist = closest_pair_of_points_between_blobs(*combo)
@@ -341,6 +342,9 @@ def join_blob_and_edge(level,sorted_parts):
                 min_dist = dist
                 wanted_pair = pairs
                 description = "join_blobs"
+    if not determine_adjacent(wanted_pair[0][0],wanted_pair[1][0]):
+        delete_blob(level.children[0])
+        return
     if wanted_pair is None and len(level.children)  == 1:
         delete_blob(level.children[0])
     else:
@@ -676,9 +680,10 @@ def add_reduce_blobs(indices_of_parts,list_of_changes):
 
 def set_target_dividers(posn_list):
     global targetDividers
-    resetTargetDividers()
-    for posn in posn_list:
-        targetDividers = targetDividers[:posn] + '|' + targetDividers[posn+1:]
+    if posn_list is not None and len(posn_list) > 0:
+        resetTargetDividers()
+        for posn in posn_list:
+            targetDividers = targetDividers[:posn] + '|' + targetDividers[posn+1:]
 
 def cost_params():
     global mainRoot, addRemovePrefScale
@@ -1424,20 +1429,21 @@ def drawSuggestion():
     centroid_lists = [info[4] for info in currSuggestion[2]]
     centroids = [l[0] for l in centroid_lists]
     encodings = currSuggestion[1][1]
-    matches = match_points_to_parts(centroids)
-    for i in range(len(centroids)):
-        centroid = centroids[i]
-        encoding = encodings[i]
-        part = matches[i]
-        if part is None:
-            text = '-/' + str(encoding)
-            cv2.putText(markedImg, text, centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.5, DARK_RED, 2)
-        else:
-            text = str(part.encoding) + '/' + str(encoding)
-            if part.encoding == encoding:
-                cv2.putText(markedImg, text, centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.5, GREEN, 2)
+    if encodings is not None and len(encodings) > 0:
+        matches = match_points_to_parts(centroids)
+        for i in range(len(centroids)):
+            centroid = centroids[i]
+            encoding = encodings[i]
+            part = matches[i]
+            if part is None:
+                text = '-/' + str(encoding)
+                cv2.putText(markedImg, text, centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.5, DARK_RED, 2)
             else:
-                cv2.putText(markedImg, text, centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.5, RED, 2)
+                text = str(part.encoding) + '/' + str(encoding)
+                if part.encoding == encoding:
+                    cv2.putText(markedImg, text, centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.5, GREEN, 2)
+                else:
+                    cv2.putText(markedImg, text, centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.5, RED, 2)
 
 
 def drawFixes():
@@ -1484,13 +1490,13 @@ def determine_adjacent(point1, point2):
     while True:
         new_x = distance*np.cos(angle) + point1[0]
         new_y = distance*np.sin(angle) + point1[1]
-        if new_x < 0:
+        if int(np.round(new_x)) < 0:
             new_x = 0
-        if new_x > CANVAS_WIDTH-1:
-            x = CANVAS_WIDTH - 1
-        if new_y < 0:
+        if int(np.round(new_x)) > CANVAS_WIDTH-1:
+            new_x = CANVAS_WIDTH - 1
+        if int(np.round(new_y)) < 0:
             new_y = 0
-        if new_y > CANVAS_HEIGHT-1:
+        if int(np.round(new_y)) > CANVAS_HEIGHT-1:
             new_y = CANVAS_HEIGHT-1
         val = bw[int(np.round(new_y)),int(np.round(new_x))]
         if  val == 255:
