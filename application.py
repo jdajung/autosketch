@@ -47,7 +47,7 @@ PART_CUT_WIDTH = 3
 # SUGGEST_NODES = 200
 SHORT_SEARCH = 0.1
 LONG_SEARCH = 2.0
-EXTRA_CUT_LENGTH = 10
+EXTRA_CUT_LENGTH = 7
 
 #global variables
 targetBinString = '11001101'#'1110010110110011001110101101101111' #Put your target encoding here!
@@ -1293,7 +1293,8 @@ def bestfs_part_reduction(max_time):
         if time.time() - start_time > max_time:
             break
         else:
-            for i in range(len(possible_cuts)):
+            i = 0
+            while i < len(possible_cuts) and not (time.time() - start_time > max_time):
                 if i not in curr_cuts:
                     new_cuts = curr_cuts[:] + [i]
                     new_cuts.sort()
@@ -1319,19 +1320,19 @@ def bestfs_part_reduction(max_time):
                                                  curr_entry[5]+found_part[5]])
                         new_info.sort()
                         ambiguous = False
-                        for i in range(len(new_info)):
-                            entry = new_info[i]
+                        for j in range(len(new_info)):
+                            entry = new_info[j]
                             if part_cut_1 in entry[2]:
-                                if i>=1 and abs(new_info[i-1][0] - entry[0]) < cut_area*ambig_factor:
+                                if j>=1 and abs(new_info[j-1][0] - entry[0]) < cut_area*ambig_factor:
                                     ambiguous = True
-                                if i<len(new_info)-1 and abs(new_info[i+1][0] - entry[0]) < cut_area*ambig_factor:
+                                if j<len(new_info)-1 and abs(new_info[j+1][0] - entry[0]) < cut_area*ambig_factor:
                                     ambiguous = True
                         if ambiguous:
                             cuts_tried[tuple(new_cuts)] = (None,new_info)
                         else:
-                            new_div = find_divisions([i[1] for i in new_info],targetBinString, \
+                            new_div = find_divisions([k[1] for k in new_info],targetBinString, \
                                                      exp_weight_cost_fun(cost_base, prefVal), \
-                                                     [i[3] for i in new_info], [i[5] for i in new_info])
+                                                     [k[3] for k in new_info], [k[5] for k in new_info])
                             if new_div is None:
                                 cuts_tried[tuple(new_cuts)] = (None,new_info)
                             else:
@@ -1339,9 +1340,11 @@ def bestfs_part_reduction(max_time):
                                 if new_div[0] < cuts_tried[tuple(best_state[0])][0]:
                                     best_state = (new_cuts,new_div,new_info)
                                 heapq.heappush(q,(new_div[0],new_cuts))
-            num_nodes += 1
+                        num_nodes += 1
+                i += 1
+
     final_cuts = []
-    # print "Searched " + str(num_nodes) + " nodes"
+    print "Searched " + str(num_nodes) + " nodes"
     for index in best_state[0]:
         final_cuts.append(possible_cuts[index])
     return (final_cuts, best_state[1], best_state[2])
@@ -1487,6 +1490,8 @@ def determine_adjacent(point1, point2):
     angle = np.arctan2(point2[1] - point1[1],point2[0] - point1[0])
     distance = 1
     nw1,nb,nw2 = 0,0,0
+    sign_x = np.sign(np.cos(angle))
+    sign_y = np.sign(np.sin(angle))
     while True:
         new_x = distance*np.cos(angle) + point1[0]
         new_y = distance*np.sin(angle) + point1[1]
@@ -1510,8 +1515,12 @@ def determine_adjacent(point1, point2):
             else:
                 nb += 1
 
-        if int(np.round(new_x)) == point2[0] and int(np.round(new_y)) == point2[1]:
-            break
+        if sign_x == 0 or (sign_x>0 and int(np.round(new_x)) >= point2[0]) or (sign_x<0 and int(np.round(new_x)) <= point2[0]):
+            if sign_y == 0 or (sign_y>0 and int(np.round(new_y)) >= point2[1]) or (sign_y<0 and int(np.round(new_y)) <= point2[1]):
+                break
+
+        # if int(np.round(new_x)) == point2[0] and int(np.round(new_y)) == point2[1]:
+        #     break
 
         distance += 1
 
