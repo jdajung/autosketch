@@ -30,7 +30,7 @@ def decToBase36String(decVal):
     outString = ""
     remaining = decVal
     while remaining > 0:
-        currVal = remaining % 36
+        currVal = int(remaining % 36)
         outString = BASE_36_CHARS[currVal] + outString
         remaining /= 36
     return outString

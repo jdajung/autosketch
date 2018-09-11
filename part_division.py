@@ -31,7 +31,7 @@ def get_bit_value(bits):
     return value
 
 def est_area_multiplier(num_additions, area_remaining):
-    min_area_per_blob = 1000
+    min_area_per_blob = 500
     if area_remaining < num_additions*min_area_per_blob:
         return 100000
     else:

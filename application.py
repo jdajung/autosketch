@@ -50,7 +50,7 @@ LONG_SEARCH = 2.0
 EXTRA_CUT_LENGTH = 7
 
 #global variables
-targetBinString = '11001101'#'1110010110110011001110101101101111' #Put your target encoding here!
+targetBinString = '110000111010110110101011100011011010' #'11001110111000001011101001010110001'#'11001101'#'1110010110110011001110101101101111' #Put your target encoding here!
 
 #the rest of these variables should be left alone
 
@@ -818,7 +818,7 @@ def exit_protect_mode():
     # drawProtected = False
 
 def toggle_blob_protection(x, y):
-    global mainRoot, protected_centroids
+    global mainRoot, protected_centroids, suggestMode
     if mainRoot is None:
         return
     selected = None
@@ -840,7 +840,8 @@ def toggle_blob_protection(x, y):
             selected.protected = True
             protected_centroids.append((x,y))
     # colour_protected()
-    updateSuggestion(SHORT_SEARCH)
+    if suggestMode != 0:
+        updateSuggestion(SHORT_SEARCH)
     updateEncodings()
 
 def colour_protected():
@@ -1737,14 +1738,14 @@ def addUndoable():
 
 #perform one undo action on the canvas
 def undo(source='button'):
-    global undoStack, undoIndex, img, suggestToggle
+    global undoStack, undoIndex, img, suggestToggle, suggestMode
     exit_protect_mode()
     exit_select_mode()
     if undoIndex < len(undoStack)-1:
         img = np.copy(undoStack[undoIndex+1])
         undoIndex += 1
         updateEncodings()
-        if suggestToggle != 0:
+        if suggestToggle != 0 and suggestMode != 0:
             updateSuggestion(SHORT_SEARCH)
     logEvent(source + 'Undo')
 
@@ -1776,7 +1777,7 @@ def leftMouseDown(event):
 
 #handles mouse releases
 def leftMouseUp(event):
-    global lastX, lastY, tool, suggestToggle, protected_centroids
+    global lastX, lastY, tool, suggestToggle, suggestMode, protected_centroids
     if tool == 'protect':
         pass
     elif tool == 'select':
@@ -1787,7 +1788,7 @@ def leftMouseUp(event):
         lastX = -1
         lastY = -1
         addUndoable()
-        if suggestToggle != 0:
+        if suggestToggle != 0 and suggestMode != 0:
             updateSuggestion(SHORT_SEARCH)
     if tool == 'protect':
         logEvent('leftMouseUp-'+tool, event.x, event.y, protected_centroids)
@@ -2094,9 +2095,9 @@ def toggleOrder(source='button'):
 
 
 def toggleSuggest(source='button'):
-    global suggestToggle
+    global suggestToggle, suggestMode
     suggestToggle = (suggestToggle + 1) % 2
-    if suggestToggle != 0:
+    if suggestToggle != 0 and suggestMode != 0:
         updateSuggestion(SHORT_SEARCH)
     else:
         updateEncodings()
@@ -3458,8 +3459,8 @@ if __name__ == "__main__":
     updateOrderPanel()
 
     ambPanel = Label(text="Off", font=buttonTextFont)
-    # ambPanel.place(x=1405, y=695, width=50, height=30)
-    # updateAmbPanel()
+    ambPanel.place(x=1465, y=695, width=50, height=30)
+    updateAmbPanel()
 
     suggestPanel = Label(text="Off", font=buttonTextFont)
     suggestPanel.place(x=1405, y=695, width=50, height=30)
@@ -3471,7 +3472,7 @@ if __name__ == "__main__":
     orderingBtn = Button(tkRoot, text="Order", font=buttonTextFont, command=toggleOrder, bg="cyan")
     orderingBtn.place(x=1345, y=730, width=50, height=50)
     ambBtn = Button(tkRoot, text="Ambig", font=buttonTextFont, command=toggleAmb, bg="orange")
-    # ambBtn.place(x=1405, y=730, width=50, height=50)
+    ambBtn.place(x=1465, y=730, width=50, height=50)
     suggestBtn = Button(tkRoot, text="Sug.", font=buttonTextFont, command=toggleSuggest, bg="green")
     suggestBtn.place(x=1405, y=730, width=50, height=50)
 
