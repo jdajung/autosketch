@@ -1,4 +1,4 @@
-This is the code for the drawing application associated with the paper "Methods for Intentional Encoding of High Capacity Human-Designable Visual Markers" by Joshua Jung and Daniel Vogel, published at CHI 2018. It requires Python 2.7, OpenCV, and all of OpenCV's dependencies to run.
+This is the code for the drawing application associated with the paper "Automating the Intentional Encoding of Human-Designable Markers" by Joshua Jung, Rahul iyer, and Daniel Vogel, published at CHI 2019. It requires Python 2.7, OpenCV, and all of OpenCV's dependencies to run.
 
 To run the application, download all files and dependencies, open a terminal, navigate to the project directory, and enter the following command:
 

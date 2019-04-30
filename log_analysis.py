@@ -421,6 +421,7 @@ def printOccurrencePerSessionStats(eventList):
             printString += 'total: ' + str(sum(currSessionVals)) + \
                            ' mean: ' + str(round(np.mean(currSessionVals), DIGITS)) + \
                            ' std: ' + str(round(np.std(currSessionVals), DIGITS)) + '\n'
+            printString += 'individual: ' + str(currSessionVals) + '\n'
         printString += '\n'
 
     print printString
@@ -527,10 +528,10 @@ def measureTimePerSession(onEventList, offEventList, startOn, restartTimer):
 
         for i in range(2):
             for j in range(NUM_METHODS):
-                if sessionTimeOn[i][j].total_seconds() > 300:
-                    sessionTimeOn[i][j] = timedelta(seconds=300)
-                if sessionTimeOff[i][j].total_seconds() > 300:
-                    sessionTimeOff[i][j] = timedelta(seconds=300)
+                if sessionTimeOn[i][j].total_seconds() > 600:
+                    sessionTimeOn[i][j] = timedelta(seconds=600)
+                if sessionTimeOff[i][j].total_seconds() > 600:
+                    sessionTimeOff[i][j] = timedelta(seconds=600)
                 timeOn[i][j].append(sessionTimeOn[i][j])
                 timeOff[i][j].append(sessionTimeOff[i][j])
 
@@ -540,7 +541,7 @@ def printTimePerSessionStats(onEventList, offEventList, startOn, restartTimer):
     perSessionTimeOn, perSessionTimeOff = measureTimePerSession(onEventList, offEventList, startOn, restartTimer)
     printString = ''
 
-    anovaVals = [[] for i in range(NUM_METHODS)]
+    anovaVals = [[[] for i in range(NUM_METHODS)] for j in range(2)]
 
     for condKey in CONDITION_IDS:
         currCond = conditions[condKey]
@@ -557,7 +558,8 @@ def printTimePerSessionStats(onEventList, offEventList, startOn, restartTimer):
             currSessionOnVals = [currSessionOnVals[i].total_seconds() for i in range(len(currSessionOnVals))]
             currSessionOffVals = [currSessionOffVals[i].total_seconds() for i in range(len(currSessionOffVals))]
 
-            anovaVals[condKey] = currSessionOnVals
+
+            anovaVals[currBits][condKey] = currSessionOnVals
 
             printString += 'On total: ' + str(sum(currSessionOnVals)) + \
                            ' mean: ' + str(round(np.mean(currSessionOnVals), DIGITS)) + \
@@ -567,25 +569,27 @@ def printTimePerSessionStats(onEventList, offEventList, startOn, restartTimer):
                            ' std: ' + str(round(np.std(currSessionOffVals), DIGITS)) + '\n'
         printString += '\n'
 
-    result = stats.f_oneway(*anovaVals)
-    printString += 'ANOVA F: ' + str(result[0]) + ' p-val: ' + str(result[1]) + '\n'
+    for i in range(2):
+        printString += str((i+1)*10) + '-bit ANOVA tests:\n'
+        result = stats.f_oneway(*(anovaVals[i]))
+        printString += 'ANOVA F: ' + str(result[0]) + ' p-val: ' + str(result[1]) + '\n'
 
-    tukeyVals = []
-    tukeyLabels = []
-    for j in range(len(anovaVals)):
-        currCondVals = anovaVals[j]
-        for val in currCondVals:
-            tukeyLabels.append(CONDITION_NAMES[j])
-            tukeyVals.append(val)
-    mc = MultiComparison(tukeyVals, tukeyLabels)
-    res = mc.tukeyhsd() #alpha=0.1)
-    printString += str(res)
-    printString += '\n'
-    printString += str(mc.groupsunique)
-    printString += '\n'
-    pVals = psturng(np.abs(res.meandiffs / res.std_pairs), len(res.groupsunique), res.df_total)
-    printString += str(pVals)
-    printString += '\n'
+        tukeyVals = []
+        tukeyLabels = []
+        for j in range(len(anovaVals[i])):
+            currCondVals = anovaVals[i][j]
+            for val in currCondVals:
+                tukeyLabels.append(CONDITION_NAMES[j])
+                tukeyVals.append(val)
+        mc = MultiComparison(tukeyVals, tukeyLabels)
+        res = mc.tukeyhsd() #alpha=0.1)
+        printString += str(res)
+        printString += '\n'
+        printString += str(mc.groupsunique)
+        printString += '\n'
+        pVals = psturng(np.abs(res.meandiffs / res.std_pairs), len(res.groupsunique), res.df_total)
+        printString += str(pVals)
+        printString += '\n\n'
 
 
         #np.asarray(someListOfLists, dtype=np.float32)
@@ -833,10 +837,10 @@ if __name__ == "__main__":
     print ''
     print '********************************************************'
     for key in participants.keys():
-        print participants[key]
-        # p = participants[key]
-        # if p.ranking[0] == 1:
-        #     print p
+        # print participants[key]
+        p = participants[key]
+        if p.ranking[0] == 1:
+            print p
 
     # condorcet(allPrefs)
     # borda(allPrefs)
@@ -853,16 +857,22 @@ if __name__ == "__main__":
 
     # print "# Undo Stats"
     # printOccurrencePerSessionStats([['buttonUndo', None, None]])
-    #
+
+    print "Protect Stats"
+    printOccurrencePerSessionStats([['leftMouseUp-protect', None, None]])
+
+    print "Slider Stats"
+    printOccurrencePerSessionStats([['sliderRelease', None, None]])
+
     # print "# Erase Toggle Stats"
     # printOccurrencePerSessionStats([['smallWhiteBrush', None, None], ['medWhiteBrush', None, None], ['largeWhiteBrush', None, None]])
 
     # print "# Erase/Undo/Clear Toggle Stats"
     # printOccurrencePerSessionStats([['buttonClear', None, None], ['buttonUndo', None, None], ['smallWhiteBrush', None, None],
     #                                 ['medWhiteBrush', None, None], ['largeWhiteBrush', None, None]])
-
-    printTimePerSessionStats([['genNewTarget10', None, None], ['genNewTarget20', None, None]],
-                             [['saveCanvas', '0', None], ['saveCanvas', '1', None]], False, True)
+    #
+    # printTimePerSessionStats([['genNewTarget10', None, None], ['genNewTarget20', None, None]],
+    #                          [['saveCanvas', '0', None], ['saveCanvas', '1', None]], False, True)
 
     # print "Label Tool Stats"
     # printStateTimePerSessionStats([['buttonToggleLabeller', None, None], ['keyboardToggleLabeller', None, None]], 0, [[1], [1,2], [1, 2]], NUM_LABEL_STATES)

@@ -50,7 +50,7 @@ LONG_SEARCH = 2.0
 EXTRA_CUT_LENGTH = 7
 
 #global variables
-targetBinString = '110000111010110110101011100011011010' #'11001110111000001011101001010110001'#'11001101'#'1110010110110011001110101101101111' #Put your target encoding here!
+targetBinString = '100101011'#'110000111010110110101011100011011010' #'11001110111000001011101001010110001'#'11001101'#'1110010110110011001110101101101111' #Put your target encoding here!
 
 #the rest of these variables should be left alone
 
@@ -3459,7 +3459,7 @@ if __name__ == "__main__":
     updateOrderPanel()
 
     ambPanel = Label(text="Off", font=buttonTextFont)
-    ambPanel.place(x=1465, y=695, width=50, height=30)
+    # ambPanel.place(x=1465, y=695, width=50, height=30)
     updateAmbPanel()
 
     suggestPanel = Label(text="Off", font=buttonTextFont)
@@ -3472,7 +3472,7 @@ if __name__ == "__main__":
     orderingBtn = Button(tkRoot, text="Order", font=buttonTextFont, command=toggleOrder, bg="cyan")
     orderingBtn.place(x=1345, y=730, width=50, height=50)
     ambBtn = Button(tkRoot, text="Ambig", font=buttonTextFont, command=toggleAmb, bg="orange")
-    ambBtn.place(x=1465, y=730, width=50, height=50)
+    # ambBtn.place(x=1465, y=730, width=50, height=50)
     suggestBtn = Button(tkRoot, text="Sug.", font=buttonTextFont, command=toggleSuggest, bg="green")
     suggestBtn.place(x=1405, y=730, width=50, height=50)
 
